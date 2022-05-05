@@ -51,7 +51,6 @@ class Model:
         segmentation = []
 
         while subword_end > 0:
-            # TODO TODO TODO
             subword_begin = row
             segmentation.append(token[subword_begin:subword_end])
 
