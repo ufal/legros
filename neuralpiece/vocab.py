@@ -9,6 +9,5 @@ class Vocab:
 
         self.unique_tokens = set(wordlist)
 
-
     def __contains__(self, item):
         return item in self.unique_tokens
