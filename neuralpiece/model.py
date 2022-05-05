@@ -1,5 +1,6 @@
 from typing import List, Callable, Any
 import numpy as np
+from scipy.special import logsumexp
 
 from neuralpiece.vocab import Vocab
 from neuralpiece.estimators import UniformEstimator
@@ -10,11 +11,11 @@ class Model:
         self.vocab = vocab
         self.estimator = estimator
 
-    def segment(self, token: str) -> List[str]:
+    def segment(self, token: str, sample: bool = False) -> List[str]:
         assert token
 
         score_table = np.full([len(token), len(token)], -np.inf)
-        prev_rows = np.zeros([len(token), len(token)], dtype=np.int32)
+        prev_rows = np.full([len(token), len(token)], -1, dtype=np.int32)
 
         # on a given row there are all subwords beginning at index i
         for row in range(len(token)):
@@ -33,6 +34,7 @@ class Model:
                     continue
 
                 best_predecesor = (-np.inf, -1)
+                predecesor_scores = np.empty(row)
 
                 for prev_row in range(row):
                     prev_subword = token[prev_row:row]
@@ -40,11 +42,24 @@ class Model:
                         self.estimator(subword, prev_subword) +
                         score_table[prev_row, row - 1])
 
+                    predecesor_scores[prev_row] = bigram_score
                     if bigram_score > best_predecesor[0]:
                         best_predecesor = (bigram_score, prev_row)
 
-                prev_rows[row, col] = best_predecesor[1]
-                score_table[row, col] = best_predecesor[0]
+                assert best_predecesor[0] == max(predecesor_scores)
+
+                if sample and best_predecesor[0] > -np.inf:
+                    normalized_scores = np.exp(predecesor_scores - logsumexp(predecesor_scores))
+
+                    rng = np.random.default_rng()
+                    selected_index = np.argmax(rng.multinomial(1, normalized_scores))
+
+                    prev_rows[row, col] = selected_index
+                    score_table[row, col] = predecesor_scores[selected_index]
+
+                else:
+                    prev_rows[row, col] = best_predecesor[1]
+                    score_table[row, col] = best_predecesor[0]
 
         subword_end = len(token)
         row = score_table[:, -1].argmax()
