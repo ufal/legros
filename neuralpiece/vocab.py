@@ -1,6 +1,5 @@
 
 class Vocab:
-
     def __init__(self, wordlist):
         self.wordlist = wordlist
 

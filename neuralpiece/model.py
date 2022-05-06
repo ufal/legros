@@ -20,7 +20,7 @@ class Model:
         # on a given row there are all subwords beginning at index i
         for row in range(len(token)):
 
-            for col in range(row, len(token)):
+            for col in range(row, min(len(token), row + self.vocab.max_subword_length)):
 
                 subword = token[row:col + 1]
 
