@@ -73,3 +73,12 @@ class Model:
             subword_end = subword_begin
 
         return reversed(segmentation)
+
+    def extract_bigrams(self, tokens):
+        bigrams = []
+        for token, count in tokens:
+            for _ in range(count):
+                segmentation = list(self.segment(token, sample=True))
+                for i in range(len(segmentation) - 1):
+                    bigrams.append(segmentation[i:i + 2])
+        return bigrams
