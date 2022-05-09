@@ -19,8 +19,8 @@ class Model:
 
         # on a given row there are all subwords beginning at index i
         for row in range(len(token)):
-
-            for col in range(row, min(len(token), row + self.vocab.max_subword_length)):
+            max_column = min(len(token), row + self.vocab.max_subword_length)
+            for col in range(row, max_column):
 
                 subword = token[row:col + 1]
 
@@ -34,10 +34,13 @@ class Model:
                     continue
 
                 best_predecesor = (-np.inf, -1)
-                predecesor_scores = np.empty(row)
+                predecesor_scores = np.full(row, -np.inf)
 
-                for prev_row in range(row):
+                min_prev_row = max(0, row - self.vocab.max_subword_length)
+                for prev_row in range(min_prev_row, row):
                     prev_subword = token[prev_row:row]
+                    if prev_subword not in self.vocab:
+                        continue
                     bigram_score = (
                         self.estimator(subword, prev_subword) +
                         score_table[prev_row, row - 1])
@@ -79,6 +82,7 @@ class Model:
         for token, count in tokens:
             for _ in range(count):
                 segmentation = list(self.segment(token, sample=True))
+                bigrams.append(["###", segmentation[0]])
                 for i in range(len(segmentation) - 1):
                     bigrams.append(segmentation[i:i + 2])
         return bigrams
