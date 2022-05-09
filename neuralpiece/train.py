@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 
 import argparse
+import copy
 import logging
+import random
 import multiprocessing
 
-logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
+import torch
+import torch.nn as nn
 
-from neuralpiece.estimators import UniformEstimator
+from neuralpiece.estimators import UniformEstimator, DotProdEstimator
 from neuralpiece.model import Model
 from neuralpiece.vocab import Vocab
+
+
+logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 
 
 def main():
@@ -22,6 +28,15 @@ def main():
     parser.add_argument(
         "--num-threads", type=int, default=4,
         help="Number of threads.")
+    parser.add_argument(
+        "--batch-size", type=int, default=1024,
+        help="Batch size for the neural model.")
+    parser.add_argument(
+        "--embedding-dim", type=int, default=300,
+        help="Embedding dim in the neural model.")
+    parser.add_argument(
+        "--patience", type=int, default=10,
+        help="Embedding dim in the neural model.")
     args = parser.parse_args()
 
     logging.info("Load vocabulary from '%s'.", args.vocab)
@@ -52,8 +67,47 @@ def main():
     for thread_bigrams in pool.map(model.extract_bigrams, split_token_counts):
         bigrams.extend(thread_bigrams)
 
-    for bigram in bigrams:
-        print(bigram)
+    random.shuffle(bigrams)
+
+    logging.info("Start training neural model.")
+    val_set = bigrams[:2000]
+    val_prev_subwords, val_subwords = zip(*val_set)
+    train_set = bigrams[2000:]
+    neural_estimator = DotProdEstimator(vocab, args.embedding_dim)
+    optimizer = torch.optim.Adam(neural_estimator.parameters(), lr=1e-4)
+    stalled = 0
+    best_loss = 1e9
+    best_params = None
+
+    @torch.no_grad()
+    def validate():
+        return -neural_estimator(val_subwords, val_prev_subwords).mean()
+
+    for epoch in range(50):
+        for i in range(0, len(train_set) // args.batch_size):
+            prev_subwords, subwords = zip(
+                *train_set[i * args.batch_size:(i + 1) * args.batch_size])
+            loss = -neural_estimator(subwords, prev_subwords).mean()
+            loss.backward()
+            optimizer.step()
+
+            if i % 10 == 9:
+                val_loss = validate()
+                logging.info(
+                    "Epoch %d, batch %d, val loss: %.3g",
+                    epoch + 1, i + 1, val_loss)
+                if val_loss < best_loss:
+                    best_loss = val_loss
+                    best_params = copy.deepcopy(neural_estimator.state_dict())
+                    stalled = 0
+                else:
+                    stalled += 1
+
+            if stalled > args.patience:
+                break
+        if stalled > args.patience:
+            break
+    neural_estimator.load_state_dict(best_params)
 
     logging.info("Done.")
 
