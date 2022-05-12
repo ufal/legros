@@ -1,4 +1,5 @@
 from typing import List, Callable, Any
+import sys
 import numpy as np
 from scipy.special import logsumexp
 
@@ -79,7 +80,8 @@ class Model:
 
     def extract_bigrams(self, tokens):
         bigrams = []
-        for token, count in tokens:
+        for i, (token, count) in enumerate(tokens):
+            print(f"{i}", file=sys.stderr, end="\r")
             for _ in range(count):
                 segmentation = list(self.segment(token, sample=True))
                 bigrams.append(["###", segmentation[0]])

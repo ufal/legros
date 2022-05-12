@@ -5,6 +5,7 @@ import copy
 import logging
 import random
 import multiprocessing
+import sys
 
 import torch
 import torch.nn as nn
@@ -37,6 +38,12 @@ def main():
     parser.add_argument(
         "--patience", type=int, default=10,
         help="Embedding dim in the neural model.")
+    parser.add_argument(
+        "--tmp-files", type=str, default="tmp",
+        help="Tmp files prefix.")
+    parser.add_argument(
+        "--load-estimator", type=str, default=None,
+        help="Saved estimator.")
     args = parser.parse_args()
 
     logging.info("Load vocabulary from '%s'.", args.vocab)
@@ -57,15 +64,26 @@ def main():
     logging.info(
         "Load %d tokens, %d per thread.", len(token_counts), split_size)
 
-    logging.info("Initialize model.")
-    estimator = UniformEstimator(vocab.size)
+    if args.load_estimator is not None:
+        logging.info("Initialize model from '%s'.", args.load_estimator)
+        estimator = torch.load(args.load_estimator)
+    else:
+        logging.info("Initialize uniform model.")
+        estimator = UniformEstimator(vocab.size)
     model = Model(vocab, estimator)
+
+    # TODO parallelize this in a pool
+    #logging.info("Print out segmentation.")
+    #with open(args.tmp_files + ".uniform", "w") as f:
+    #    for token, count in token_counts:
+    #        print(f"{token}\t{count}\t{list(model.segment(token))}", file=f)
 
     logging.info("Sample and count bigrams.")
     pool = multiprocessing.Pool(processes=args.num_threads)
     bigrams = []
     for thread_bigrams in pool.map(model.extract_bigrams, split_token_counts):
         bigrams.extend(thread_bigrams)
+    pool.close()
 
     random.shuffle(bigrams)
 
@@ -81,13 +99,14 @@ def main():
 
     @torch.no_grad()
     def validate():
-        return -neural_estimator(val_subwords, val_prev_subwords).mean()
+        return -neural_estimator.batch(
+            val_subwords, val_prev_subwords).mean()
 
-    for epoch in range(50):
+    for epoch in range(1):
         for i in range(0, len(train_set) // args.batch_size):
             prev_subwords, subwords = zip(
                 *train_set[i * args.batch_size:(i + 1) * args.batch_size])
-            loss = -neural_estimator(subwords, prev_subwords).mean()
+            loss = -neural_estimator.batch(subwords, prev_subwords).mean()
             loss.backward()
             optimizer.step()
 
@@ -108,6 +127,22 @@ def main():
         if stalled > args.patience:
             break
     neural_estimator.load_state_dict(best_params)
+    torch.save(neural_estimator, args.tmp_files + ".model1")
+
+    logging.info("Print out segmentation.")
+    model.estimator = neural_estimator.to_numpy()
+
+    #with open(args.tmp_files + ".neural1", "w") as f:
+    #    for i, (token, count) in enumerate(token_counts):
+    #        segmentation = list(model.segment(token))
+    #        print(f"{i}", file=sys.stderr, end="\r")
+    #        print(f"{token}\t{count}\t{segmentation}", file=f)
+
+    logging.info("Sample and count bigrams.")
+    pool = multiprocessing.Pool(processes=args.num_threads)
+    for thread_bigrams in pool.map(model.extract_bigrams, split_token_counts):
+        bigrams.extend(thread_bigrams)
+    pool.close()
 
     logging.info("Done.")
 
