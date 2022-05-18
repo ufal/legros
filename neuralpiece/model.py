@@ -26,8 +26,8 @@ class Model:
                 subword = token[row:col + 1]
 
                 if subword not in self.vocab:
-                    if len(subword) == 1:
-                        raise ValueError(f"character '{subword}' not in vocab")
+                    #if len(subword) == 1:
+                    #    raise ValueError(f"character '{subword}' not in vocab")
                     continue
 
                 if row == 0:

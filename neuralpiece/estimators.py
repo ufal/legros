@@ -73,12 +73,12 @@ class DotProdEstimator(nn.Module):
 
     def batch(self, subword: List[str], prev_subword: List[str] = "###") -> float:
         input_idx = torch.tensor([
-            self.vocab.word2idx[s] for s in prev_subword])
+            self.vocab.word2idx.get(s, 0) for s in prev_subword])
         # TODO if cuda, do something
         embedded = self.embeddings(input_idx)
         distribution = F.log_softmax(self.output_layer(embedded), 1)
 
-        output_idx = torch.tensor([self.vocab.word2idx[s] for s in subword])
+        output_idx = torch.tensor([self.vocab.word2idx.get(s, 0) for s in subword])
 
         logprobs = distribution[torch.arange(len(subword)), output_idx]
         return logprobs

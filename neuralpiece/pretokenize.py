@@ -20,25 +20,3 @@ def pretokenize(text: str) -> List[str]:
             token_start = i
     tokens.append(text[token_start:])
     return tokens
-
-
-def main():
-    parser = argparse.ArgumentParser(__doc__)
-    parser.add_argument(
-        "input", nargs="?", type=argparse.FileType("r"),
-        default=sys.stdin)
-    args = parser.parse_args()
-
-    token_counts = defaultdict(int)
-    for line in args.input:
-        for token in pretokenize(line.strip()):
-            if "\t" in token:
-                continue
-            token_counts[token] += 1
-
-    for token, count in token_counts.items():
-        print(f"{token}\t{count}")
-
-
-if __name__ == "__main__":
-    main()

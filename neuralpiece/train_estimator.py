@@ -4,18 +4,26 @@ import argparse
 import copy
 import logging
 import random
-import multiprocessing
 import sys
 
 import torch
 import torch.nn as nn
 
-from neuralpiece.estimators import UniformEstimator, DotProdEstimator
-from neuralpiece.model import Model
+from neuralpiece.estimators import DotProdEstimator
 from neuralpiece.vocab import Vocab
 
 
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
+
+
+def load_bigrams(fh):
+    bigrams = []
+    for line in fh:
+        tokens = line.strip().split("\t")
+        if len(tokens) != 2:
+            continue
+        bigrams.append(tokens)
+    return bigrams
 
 
 def main():
@@ -47,7 +55,7 @@ def main():
     args = parser.parse_args()
 
     logging.info("Load vocabulary from '%s'.", args.vocab)
-    vocab = Vocab([line.strip() for line in args.vocab])
+    vocab = Vocab([line.rstrip() for line in args.vocab])
     args.vocab.close()
     logging.info("Vocab size %d", vocab.size)
 
@@ -58,12 +66,14 @@ def main():
         logging.info("Initialize new estimator.")
         estimator = DotProdEstimator(vocab, args.embedding_dim)
 
-    bigrams = [line.strip().split() for line in args.bigrams]
+    logging.info("Load bigrams from file.")
+    bigrams = load_bigrams(args.bigrams)
     args.bigrams.close()
 
+    logging.info("Shuffle data.")
     random.shuffle(bigrams)
 
-    logging.info("Start training neural model.")
+    logging.info("Start training the model.")
     val_set = bigrams[:2000]
     val_prev_subwords, val_subwords = zip(*val_set)
     train_set = bigrams[2000:]

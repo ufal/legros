@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-import copy
 import logging
-import random
-import multiprocessing
 import sys
 
 import torch
@@ -34,7 +31,7 @@ def main():
     args = parser.parse_args()
 
     logging.info("Load vocabulary from '%s'.", args.vocab)
-    vocab = Vocab([line.strip() for line in args.vocab])
+    vocab = Vocab([line.rstrip() for line in args.vocab])
     args.vocab.close()
     logging.info("Vocab size %d", vocab.size)
 
@@ -46,7 +43,7 @@ def main():
     model = Model(vocab, estimator)
 
     for line in args.input:
-        for token in pretokenize(line.strip()):
+        for token in pretokenize(line.rstrip()):
             segmentation = list(model.segment(token, sample=True))
             print(f"###\t{segmentation[0]}")
             for i in range(len(segmentation) - 1):
