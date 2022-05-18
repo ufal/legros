@@ -42,6 +42,8 @@ class Model:
                     prev_subword = token[prev_row:row]
                     if prev_subword not in self.vocab:
                         continue
+                    if score_table[prev_row, row - 1] == -np.inf:
+                        continue
                     bigram_score = (
                         self.estimator(subword, prev_subword) +
                         score_table[prev_row, row - 1])
@@ -80,11 +82,9 @@ class Model:
 
     def extract_bigrams(self, tokens):
         bigrams = []
-        for i, (token, count) in enumerate(tokens):
-            print(f"{i}", file=sys.stderr, end="\r")
-            for _ in range(count):
-                segmentation = list(self.segment(token, sample=True))
-                bigrams.append(["###", segmentation[0]])
-                for i in range(len(segmentation) - 1):
-                    bigrams.append(segmentation[i:i + 2])
+        for token in tokens:
+            segmentation = list(self.segment(token, sample=True))
+            bigrams.append(["###", segmentation[0]])
+            for i in range(len(segmentation) - 1):
+                bigrams.append(segmentation[i:i + 2])
         return bigrams
