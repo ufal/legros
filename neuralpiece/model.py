@@ -8,9 +8,14 @@ from neuralpiece.estimators import UniformEstimator
 
 
 class Model:
-    def __init__(self, vocab: Vocab, estimator: Callable[[Any], float]) -> None:
+    def __init__(
+            self,
+            vocab: Vocab,
+            estimator: Callable[[Any], float],
+            sample_temperature: float = 2.0) -> None:
         self.vocab = vocab
         self.estimator = estimator
+        self.temperature = sample_temperature
 
     def segment(self, token: str, sample: bool = False) -> List[str]:
         assert token
@@ -55,10 +60,13 @@ class Model:
                 assert best_predecesor[0] == max(predecesor_scores)
 
                 if sample and best_predecesor[0] > -np.inf:
-                    normalized_scores = np.exp(predecesor_scores - logsumexp(predecesor_scores))
+                    predecesor_scores /= self.temperature
+                    normalized_scores = np.exp(
+                        predecesor_scores - logsumexp(predecesor_scores))
 
                     rng = np.random.default_rng()
-                    selected_index = np.argmax(rng.multinomial(1, normalized_scores))
+                    selected_index = np.argmax(
+                        rng.multinomial(1, normalized_scores))
 
                     prev_rows[row, col] = selected_index
                     score_table[row, col] = predecesor_scores[selected_index]
