@@ -64,21 +64,27 @@ class DotProdEstimator(nn.Module):
 
         self.vocab = vocab
         self.embeddings = nn.Embedding(vocab.size, dim)
-        self.output_layer = nn.Linear(dim, vocab.size)
+        self.output_layer = nn.Sequential(
+            nn.Dropout(0.1),
+            nn.Linear(dim, vocab.size))
+        self.device = "cpu"
 
     @torch.no_grad()
     def forward(self, subword: str, prev_subword: str = "###") -> float:
         logprobs = self.batch([subword], [prev_subword])
         return logprobs[0]
 
+    def to(self, device):
+        self.device = device
+        return super().to(device)
+
     def batch(self, subword: List[str], prev_subword: List[str] = "###") -> float:
         input_idx = torch.tensor([
-            self.vocab.word2idx.get(s, 0) for s in prev_subword])
-        # TODO if cuda, do something
+            self.vocab.word2idx.get(s, 0) for s in prev_subword]).to(self.device)
         embedded = self.embeddings(input_idx)
         distribution = F.log_softmax(self.output_layer(embedded), 1)
 
-        output_idx = torch.tensor([self.vocab.word2idx.get(s, 0) for s in subword])
+        output_idx = torch.tensor([self.vocab.word2idx.get(s, 0) for s in subword]).to(self.device)
 
         logprobs = distribution[torch.arange(len(subword)), output_idx]
         return logprobs
@@ -87,5 +93,35 @@ class DotProdEstimator(nn.Module):
         return NumpyDotProdEstimator(
             self.vocab,
             self.embeddings.weight.detach().numpy(),
-            self.output_layer.weight.detach().numpy().T,
-            self.output_layer.bias.detach().numpy())
+            self.output_layer[1].weight.detach().numpy().T,
+            self.output_layer[1].bias.detach().numpy())
+
+    @torch.no_grad()
+    def to_table(self) -> TableEstimator:
+        all_words = torch.arange(self.vocab.size).to(self.device)
+        all_embedded = self.embeddings(all_words)
+        distributions = F.log_softmax(
+            self.output_layer(all_embedded), 1)
+        table = {}
+        for i, word1 in enumerate(self.vocab.wordlist):
+            table[word1] = {}
+            for j, word2 in enumerate(self.vocab.wordlist):
+                table[word1][word2] = distributions[i, j]
+
+        return TableEstimator(table)
+
+    @torch.no_grad()
+    def estimate_posteriors(self, batch_size: int) -> List[float]:
+        all_words = torch.arange(self.vocab.size)
+        logsum = torch.full(
+            (1, self.vocab.size), float('-inf')).to(self.device)
+        for i in range(self.vocab.size // batch_size):
+            batch = all_words[
+                i * batch_size:(i + 1) * batch_size].to(self.device)
+            embedded = self.embeddings(batch)
+            distribution = F.log_softmax(self.output_layer(embedded), 1)
+            logsum = torch.logsumexp(torch.cat((logsum, distribution), dim=0),
+                                     keepdim=True, dim=0)
+
+        return logsum.squeeze(0).cpu().numpy().tolist()
+

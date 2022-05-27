@@ -2,7 +2,6 @@
 
 import argparse
 import logging
-import os
 import sys
 
 import torch
@@ -15,7 +14,6 @@ from neuralpiece.vocab import Vocab
 
 
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
-
 
 
 def main():
@@ -45,11 +43,11 @@ def main():
     model = Model(vocab, estimator)
 
     for line in args.input:
+        tokenized = []
         for token in pretokenize(line.rstrip()):
-            segmentation = list(model.segment(token, sample=True))
-            print(f"###\t{segmentation[0]}")
-            for i in range(len(segmentation) - 1):
-                print(f"{segmentation[i]}\t{segmentation[i + 1]}")
+            segmentation = list(model.segment(token, sample=False))
+            tokenized.extend(segmentation)
+        print(" ".join(tokenized))
 
 
 if __name__ == "__main__":
