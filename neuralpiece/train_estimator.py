@@ -41,7 +41,7 @@ def main():
         "--batch-size", type=int, default=1024,
         help="Batch size for the neural model.")
     parser.add_argument(
-        "--epochs", type=int, default=100,
+        "--epochs", type=int, default=50,
         help="Batch size for the neural model.")
     parser.add_argument(
         "--embedding-dim", type=int, default=300,

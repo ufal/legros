@@ -12,7 +12,7 @@ class Model:
             self,
             vocab: Vocab,
             estimator: Callable[[Any], float],
-            sample_temperature: float = 2.0) -> None:
+            sample_temperature: float = 1.0) -> None:
         self.vocab = vocab
         self.estimator = estimator
         self.temperature = sample_temperature
@@ -95,4 +95,5 @@ class Model:
             bigrams.append(["###", segmentation[0]])
             for i in range(len(segmentation) - 1):
                 bigrams.append(segmentation[i:i + 2])
+            bigrams.append((segmentation[-1], "###"))
         return bigrams
