@@ -26,6 +26,7 @@ def main():
     model = FastText(
         vector_size=args.dimension,
         workers=args.num_threads,
+        sg=1,
         max_final_vocab=args.vocab_size)
 
     model.build_vocab(
