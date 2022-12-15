@@ -16,9 +16,8 @@ set(CMAKE_CXX_FLAGS_RELEASE "-Ofast")
 
 find_package (Eigen3 3.4 REQUIRED NO_MODULE)
 
-add_executable(get_substring_contexts src/get_substring_contexts.cpp src/substring_stats.cpp src/vocabs.cpp src/options.cpp)
 add_executable(merge_contexts src/merge_contexts.cpp)
-add_executable(subword_embeddings src/subword_embeddings.cpp src/substring_stats.cpp src/vocabs.cpp src/options.cpp)
+add_executable(subword_embeddings src/subword_embeddings.cpp src/substring_stats.cpp src/vocabs.cpp)
 add_executable(test-eigen src/test-eigen.cpp)
 add_executable(word_cooccurrence_matrix src/word_cooccurrence_matrix.cpp src/vocabs.cpp)
 add_executable(forward_backward src/forward_backward.cpp src/vocabs.cpp src/unigram_model.cpp)
@@ -26,7 +25,6 @@ add_executable(test_unigram_model src/test_unigram_model.cpp src/vocabs.cpp src/
 
 target_link_libraries (subword_embeddings Eigen3::Eigen)
 target_link_libraries (word_cooccurrence_matrix Eigen3::Eigen)
-target_link_libraries (get_substring_contexts Eigen3::Eigen)
 target_link_libraries (forward_backward Eigen3::Eigen)
 target_link_libraries (test_unigram_model Eigen3::Eigen)
 target_link_libraries (test-eigen Eigen3::Eigen)

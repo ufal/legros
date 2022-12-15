@@ -5,7 +5,6 @@
 #include <string>
 #include <fstream>
 #include <sstream>
-#include "options.h"
 
 
 void load_allowed_substrings(

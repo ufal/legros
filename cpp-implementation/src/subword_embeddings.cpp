@@ -1,15 +1,72 @@
-
 #include <unordered_map>
 #include <string>
 #include <vector>
 #include <iostream>
 #include <fstream>
 #include "CLI11.hpp"
-#include "options.h"
 #include "vocabs.h"
 #include "substring_stats.h"
 #include <Eigen/Dense>
 
+struct opt {
+  std::string subword_vocab_file;
+  std::string word_vocab_file;
+  std::string training_data_file;
+  std::string fasttext_output_matrix;
+  std::string output_file;
+  std::string allowed_substrings;
+  int max_subword = 10;
+  int window_size = 3;
+  int fasttext_dim = 200;
+  size_t buffer_size = 1000000;
+  int shard_size = 1000;
+} opt;
+
+void get_options(CLI::App& app, int argc, char* argv[]) {
+  app.add_option("subword_vocabulary",
+    opt.subword_vocab_file, "Subword vocabulary, subword per line.")
+    ->required()
+    ->check(CLI::ExistingFile);
+
+  app.add_option("word_vocabulary",
+    opt.word_vocab_file, "Word vocabulary, word per line.")
+    ->required()
+    ->check(CLI::ExistingFile);
+
+  app.add_option("input",
+    opt.training_data_file, "Tokenized text.")
+    ->required()
+    ->check(CLI::ExistingFile);
+
+  app.add_option("fasttext",
+    opt.fasttext_output_matrix, "Pseudo-inverse of the fasttext output matrix.")
+    ->required()
+    ->check(CLI::ExistingFile);
+
+  app.add_option("output",
+    opt.output_file, "Matrix data.")
+    ->required()
+    ->check(CLI::NonexistentPath);
+
+  app.add_option("--allowed-substrings",
+    opt.allowed_substrings, "List of words accompanied with allowed substrings.")
+    ->check(CLI::ExistingFile);
+
+  app.add_option("--max-subword",
+    opt.max_subword, "Maximum subword length.");
+
+  app.add_option("--window-size",
+    opt.window_size, "Window size.");
+
+  app.add_option("--fasttext-dim",
+    opt.fasttext_dim, "Dimension of the fasttext embeddings.");
+
+  app.add_option("--buffer-size",
+    opt.buffer_size, "Buffer size.");
+
+  app.add_option("--shard-size",
+    opt.shard_size, "Shard size for matrix multiplication.");
+}
 
 int main(int argc, char* argv[]) {
     CLI::App app{"Compute subword embeddings."};
@@ -30,7 +87,7 @@ int main(int argc, char* argv[]) {
 
     std::cerr << "Populating matrix stats (dim " << subword_count <<  " x " << word_count << ")" << std::endl;
     Eigen::MatrixXi stats(subword_count, word_count);
-    populate_substring_stats<Eigen::MatrixXi>(stats, word_vocab, subword_vocab);
+    populate_substring_stats<Eigen::MatrixXi>(stats, word_vocab, subword_vocab, opt.training_data_file, opt.allowed_substrings, opt.buffer_size, opt.window_size, opt.max_subword);
     std::cerr << stats.topLeftCorner<5,5>() << std::endl;
 
     // std::cerr << "Number of zero elements in stats: " << std::count(stats.data(), stats.data() + stats.size(), 0) << std::endl;

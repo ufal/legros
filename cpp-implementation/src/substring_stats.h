@@ -3,10 +3,10 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <iterator>
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
-#include "options.h"
 #include "vocabs.h"
 #include <Eigen/Dense>
 
@@ -74,6 +74,7 @@ void process_buffer(
         T &stats,
         const Vocab &words,
         const Vocab &subwords,
+        bool use_allowed_substrings,
         std::unordered_map<std::string,std::unordered_set<std::string>> &allowed_substrings) {
 
     #pragma omp parallel for
@@ -90,8 +91,8 @@ void process_buffer(
 
             std::unordered_set<std::string> substrings;
 
-            if(!opt.allowed_substrings.empty()) {
-                if(allowed_substrings.count(token))  // use only this if if you want to use all substrings instead of none
+            if(use_allowed_substrings) {
+                if(allowed_substrings.count(token))  // use only this if you want to use all substrings instead of none
                     substrings = allowed_substrings[token];
                 else
                     continue;
@@ -115,20 +116,25 @@ template<typename T>
 void populate_substring_stats(
         T &stats,
         const Vocab &words,
-        const Vocab &subwords) {
+        const Vocab &subwords,
+        const std::string &training_data_file,
+        const std::string &allowed_substrings_file,
+        const size_t buffer_size,
+        const int window_size,
+        const int max_subword) {
 
-    std::cerr << "Iterating over sentences from " << opt.training_data_file << std::endl;
-    std::ifstream input_fh(opt.training_data_file);
+    std::cerr << "Iterating over sentences from " << training_data_file << std::endl;
+    std::ifstream input_fh(training_data_file);
 
     std::unordered_map<std::string,std::unordered_set<std::string>> allowed_substrings;
-    if (!opt.allowed_substrings.empty()) {
-        std::cerr << "Loading list of allowed substrings from " << opt.allowed_substrings << std::endl;
-        load_allowed_substrings(allowed_substrings, opt.allowed_substrings);
+    if (!allowed_substrings_file.empty()) {
+        std::cerr << "Loading list of allowed substrings from " << allowed_substrings_file << std::endl;
+        load_allowed_substrings(allowed_substrings, allowed_substrings_file);
     }
 
     int lineno = 0;
     int buffer_pos = 0;
-    std::vector<std::string> buffer(opt.buffer_size);
+    std::vector<std::string> buffer(buffer_size);
 
     while(std::getline(input_fh, buffer[buffer_pos])) {
         ++lineno;
@@ -137,15 +143,19 @@ void populate_substring_stats(
             std::cerr << "Lineno: " << lineno << "\r";
 
         // full buffer -> process
-        if(buffer_pos == opt.buffer_size) {
-            process_buffer<T>(buffer, buffer_pos, opt.max_subword, opt.window_size, stats, words, subwords, allowed_substrings);
+        if(buffer_pos == buffer_size) {
+            process_buffer<T>(buffer, buffer_pos, max_subword, window_size, 
+                              stats, words, subwords, !allowed_substrings_file.empty(),
+                              allowed_substrings);
             buffer_pos = 0;
         }
     }
 
     // process the rest of the buffer
     if(buffer_pos > 0) {
-        process_buffer<T>(buffer, buffer_pos, opt.max_subword, opt.window_size, stats, words, subwords, allowed_substrings);
+        process_buffer<T>(buffer, buffer_pos, max_subword, window_size, stats,
+                          words, subwords, !allowed_substrings_file.empty(),
+                          allowed_substrings);
     }
 
     std::cerr << "Read " << lineno << " lines in total." << std::endl;
