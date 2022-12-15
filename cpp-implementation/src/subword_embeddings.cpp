@@ -17,22 +17,21 @@ int main(int argc, char* argv[]) {
     CLI11_PARSE(app, argc, argv);
 
     std::cerr << "Loading subword vocab: " << opt.subword_vocab_file << std::endl;
-    std::unordered_map<std::string, int> subword_to_index;
-    get_word_to_index(subword_to_index, opt.subword_vocab_file);
+    Vocab subword_vocab(opt.subword_vocab_file);
 
-    std::cerr << "Loading word vocab: " << opt.word_vocab_file << std::endl;
-    std::unordered_map<std::string, int> word_to_index;
-    get_word_to_index(word_to_index, opt.word_vocab_file);
+    std::cerr << "Loading word vocab: " << opt.word_vocab_file
+              << std::endl;
+    Vocab word_vocab(opt.word_vocab_file);
 
-    std::cerr << "Index of 'společenství': " << word_to_index["společenství"] << std::endl;
+    std::cerr << "Index of 'společenství': " << word_vocab["společenství"] << std::endl;
 
-    int subword_count = subword_to_index.size();
-    int word_count = word_to_index.size();
+    int subword_count = subword_vocab.size();
+    int word_count = word_vocab.size();
 
     std::cerr << "Populating matrix stats (dim " << subword_count <<  " x " << word_count << ")" << std::endl;
     Eigen::MatrixXi stats(subword_count, word_count);
-    populate_substring_stats<Eigen::MatrixXi>(stats, word_to_index, subword_to_index);
-    std::cerr << stats.topLeftCorner<5,5>() <<std::endl;
+    populate_substring_stats<Eigen::MatrixXi>(stats, word_vocab, subword_vocab);
+    std::cerr << stats.topLeftCorner<5,5>() << std::endl;
 
     // std::cerr << "Number of zero elements in stats: " << std::count(stats.data(), stats.data() + stats.size(), 0) << std::endl;
     // std::cerr << "Stats total size: " << stats.size() << std::endl;
