@@ -65,9 +65,15 @@ class DotProdEstimator(nn.Module):
         self.vocab = vocab
         self.embeddings = nn.Embedding(vocab.size, dim)
         self.output_layer = nn.Sequential(
+            nn.LayerNorm(dim),
             nn.Dropout(0.1),
             nn.Linear(dim, vocab.size))
         self.device = "cpu"
+
+    def set_fixed_embeddings(self, subword_embeddings: np.array) -> None:
+        self.embeddings.weights = nn.Parameter(
+            torch.tensor(subword_embeddings).to(self.device))
+        self.embeddings.weights.requires_grad = False
 
     @torch.no_grad()
     def forward(self, subword: str, prev_subword: str = "###") -> float:
@@ -92,12 +98,13 @@ class DotProdEstimator(nn.Module):
     def to_numpy(self) -> NumpyDotProdEstimator:
         return NumpyDotProdEstimator(
             self.vocab,
-            self.embeddings.weight.detach().numpy(),
-            self.output_layer[1].weight.detach().numpy().T,
-            self.output_layer[1].bias.detach().numpy())
+            self.embeddings.weight.cpu().detach().numpy(),
+            self.output_layer[1].cpu().weight.detach().numpy().T,
+            self.output_layer[1].cpu().bias.detach().numpy())
 
     @torch.no_grad()
     def to_table(self) -> TableEstimator:
+        import ipdb; ipdb.set_trace()
         all_words = torch.arange(self.vocab.size).to(self.device)
         all_embedded = self.embeddings(all_words)
         distributions = F.log_softmax(

@@ -4,7 +4,6 @@ import numpy as np
 from scipy.special import logsumexp
 
 from neuralpiece.vocab import Vocab
-from neuralpiece.estimators import UniformEstimator
 
 
 class Model:
@@ -36,7 +35,7 @@ class Model:
                     continue
 
                 if row == 0:
-                    score_table[row, col] = self.estimator(subword)
+                    score_table[row, col] = self.estimator(subword, "###")
                     continue
 
                 best_predecesor = (-np.inf, -1)
@@ -86,7 +85,7 @@ class Model:
             row = prev_rows[row, subword_end - 1]
             subword_end = subword_begin
 
-        return reversed(segmentation)
+        return list(reversed(segmentation))
 
     def extract_bigrams(self, tokens):
         bigrams = []
