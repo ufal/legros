@@ -21,7 +21,7 @@ public:
     int size() const { return word_to_index.size(); }
     bool contains(const std::string& word) const { return word_to_index.count(word) == 1; }
 
-    const int operator[](const std::string& word) const { return word_to_index.at(word); }
+    int operator[](const std::string& word) const { return word_to_index.at(word); }
     const std::string& operator[](int index) const { return index_to_word[index]; }
 
     Vocab(const std::string& filename);
@@ -36,6 +36,6 @@ private:
 public:
     int embedding_dim;
     Eigen::MatrixXf emb;
-    
+
     Embeddings(const std::string &filename);
 };

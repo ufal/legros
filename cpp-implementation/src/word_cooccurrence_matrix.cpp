@@ -2,7 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <unordered_map>
-#include "CLI11.hpp"
+#include <CLI11.hpp>
 #include "vocabs.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -12,10 +12,10 @@ struct opt {
     std::string training_data_file;
     std::string output_file;
     int window_size = 3;
-    size_t buffer_size = 1000000;
+    int buffer_size = 1000000;
 } opt;
 
-void get_options(CLI::App& app, int argc, char* argv[]) {
+void get_options(CLI::App& app) {
     app.add_option("word_vocabulary",
         opt.word_vocab_file, "Word vocabulary, word per line.")
         ->required()
@@ -62,6 +62,7 @@ U& get_2d(
     return ref;
 }
 
+
 int& get_2d(
         std::unordered_map<int, std::unordered_map<int, int>> &stats,
         int stat_index, int word_index) {
@@ -77,7 +78,7 @@ int& get_2d(
     }
 
     return w_stats.at(word_index);
-}  
+}
 
 template<typename T>
 void try_add_to_stats(
@@ -98,7 +99,7 @@ void try_add_to_stats(
 
     int stat_index = word_to_index.at(window_token);
 
-    #pragma omp atomic 
+    #pragma omp atomic
         get_2d(stats, stat_index, word_index) += 1;
 
 }
@@ -131,17 +132,17 @@ void process_buffer(
             }
             ++t;
         }
-    } 
+    }
 }
 
 template<typename T>
 void populate_word_stats(
         T& stats,
         const std::unordered_map<std::string, int>&  word_to_index) {
-    
+
     std::cerr << "Iterating over sentences from " << opt.training_data_file << std::endl;
     std::ifstream input_fh(opt.training_data_file);
-        
+
     int lineno = 0;
     int buffer_pos = 0;
     std::vector<std::string> buffer(opt.buffer_size);
@@ -169,7 +170,7 @@ void populate_word_stats(
 
 int main(int argc, char* argv[]) {
     CLI::App app{"Compute word cooccurrences."};
-    get_options(app, argc, argv);
+    get_options(app);
     CLI11_PARSE(app, argc, argv);
 
     std::cerr << "Loading word vocab: " << opt.word_vocab_file << std::endl;
@@ -181,20 +182,20 @@ int main(int argc, char* argv[]) {
     int word_count = word_to_index.size();
 
     //Eigen::SparseMatrix<int> stats(word_count, word_count);
-    Eigen::MatrixXi stats(word_count, word_count);    
+    Eigen::MatrixXi stats(word_count, word_count);
     //std::unordered_map<int, std::unordered_map<int, int>> stats;
 
     //populate_word_stats<Eigen::SparseMatrix<int>>(stats, word_to_index);
     populate_word_stats<Eigen::MatrixXi>(stats, word_to_index);
     //populate_word_stats<std::unordered_map<int, std::unordered_map<int, int>>>(stats, word_to_index);
-    
+
     for(int i = 0 ; i < 5; ++i) {
         for(int j = 0; j < 5; ++j) {
             std::cerr << get_2d(stats, i, j) << " ";
         }
         std::cerr << std::endl;
     }
-    
+
     //std::cerr << "Number of zero elements in stats: " << std::count(stats.data(), stats.data() + stats.size(), 0) << std::endl;
     //std::cerr << "Stats total size: " << stats.size() << std::endl;
 
@@ -203,14 +204,14 @@ int main(int argc, char* argv[]) {
 
     int output_buffer_size = 10000;
     int howmany = word_count / output_buffer_size;
-    int remainder = word_count % output_buffer_size;
+    //int remainder = word_count % output_buffer_size;
 
     std::vector<std::string> partial_strings(output_buffer_size);
 
     for(int b = 0; b <= howmany; ++b) {
         int begin = b * output_buffer_size;
         int end = std::min(word_count, begin + output_buffer_size);
-        int diff = end - begin;
+        //int diff = end - begin;
 
         #pragma omp parallel for
         for(int i = begin; i < end; ++i) {
@@ -220,7 +221,7 @@ int main(int argc, char* argv[]) {
                 if(val != 0)
                     ss << i << " " << j << " " << val << "\n";
             }
-            
+
             partial_strings[i - begin] = ss.str();
         }
 
@@ -233,6 +234,6 @@ int main(int argc, char* argv[]) {
 
     output_fh.close();
     std::cerr << std::endl;
-    
+
     return 0;
 }

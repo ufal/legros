@@ -8,7 +8,7 @@
 
 
 void load_allowed_substrings(
-        std::unordered_map<std::string,std::unordered_set<std::string>> &allowed_substrings,
+        std::unordered_map<std::string,std::vector<std::string>> &allowed_substrings,
         const std::string &file) {
 
     // format: space-separated file, first field is the word, the rest are allowed substrings
@@ -18,7 +18,7 @@ void load_allowed_substrings(
         std::string word;
         iss >> word;
 
-        std::unordered_set<std::string> tokens(
+        std::vector<std::string> tokens(
             (std::istream_iterator<std::string>(iss)),
              std::istream_iterator<std::string>());
 
@@ -32,7 +32,7 @@ void load_allowed_substrings(
  * For given word, get all its substrings (present in the subword_to_index map)
  * BE CAREFUL, for this is byte-based!!!
  */
-void get_all_substrings(std::unordered_set<std::string> &substrings,
+void get_all_substrings(std::vector<std::string> &substrings,
         const Vocab &subwords,
         const std::string &word, int max_len) {
 
@@ -42,7 +42,7 @@ void get_all_substrings(std::unordered_set<std::string> &substrings,
             if(!subwords.contains(substr))
                 continue;
 
-            substrings.insert(substr);
+            substrings.push_back(substr);
         }
     }
 }
