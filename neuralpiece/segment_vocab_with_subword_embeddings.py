@@ -11,7 +11,7 @@ from gensim.models import Word2Vec
 import numpy as np
 from scipy.spatial import distance
 
-from neuralpiece.unigram_segment import viterbi_segment
+from neuralpiece.unigram_segment import viterbi_segment, expected_counts
 
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 
@@ -26,8 +26,7 @@ def get_substrings(
         for i in range(0, len(word) - sub_len + 1):
             substr = word[i:i + sub_len]
             if (substr in subwrd2idx and
-                (exclude_subwords is not None and
-                 substr not in exclude_subwords)):
+                (exclude_subwords is None or substr not in exclude_subwords)):
                 substrings.append((substr, subwrd2idx[substr]))
     return substrings
 
@@ -40,7 +39,7 @@ def try_segment(
         inference_mode: str = "sum",
         sample: bool = False,
         exclude_subwords: List[str] = None) -> List[Tuple[List[str], float]]:
-    if isinstance(fasttext ,np.ndarray):
+    if isinstance(fasttext, np.ndarray):
         vector = fasttext
     else:
         try:
@@ -50,14 +49,15 @@ def try_segment(
     subwords = get_substrings(
         word, subwrd2idx, exclude_subwords=exclude_subwords)
     subword_scores = {
-        swrd: -distance.cosine(vector, subword_embeddings[idx]) #+ 1e-9
+            #swrd: -distance.cosine(vector, subword_embeddings[idx]) #+ 1e-9
+        swrd: 2 - distance.cosine(vector, subword_embeddings[idx]) #+ 1e-9
         for swrd, idx in subwords}
-    #if subword_scores:
-    #    denominator = math.log(sum(subword_scores.values()))
-    #    subword_scores = {
-    #        swrd: math.log(val) - denominator
-    #        for swrd, val in subword_scores.items()
-    #    }
+    if subword_scores:
+        denominator = math.log(sum(subword_scores.values()))
+        subword_scores = {
+            swrd: math.log(val) - denominator
+            for swrd, val in subword_scores.items()
+    }
 
     def seg():
         seg, score = viterbi_segment(
@@ -70,6 +70,38 @@ def try_segment(
     seg, score = viterbi_segment(
         word, subword_scores, inference_mode=inference_mode, sample=False)
     return [(" ".join(seg), -score)]
+
+
+def expected_counts_segment(
+        word: str,
+        fasttext: Union[FastText, np.ndarray],
+        subwrd2idx: Dict[str, int],
+        subword_embeddings: np.array,
+        exclude_subwords: List[str] = None) -> Dict[str, float]:
+    if isinstance(fasttext, np.ndarray):
+        vector = fasttext
+    else:
+        try:
+            vector = fasttext.wv[word]
+        except KeyError:
+            vector = fasttext.wv.vectors.mean(0)
+    subwords = get_substrings(
+        word, subwrd2idx, exclude_subwords=exclude_subwords)
+    subword_scores = {
+            #swrd: -distance.cosine(vector, subword_embeddings[idx]) #+ 1e-9
+        swrd: 2 - distance.cosine(vector, subword_embeddings[idx]) #+ 1e-9
+        for swrd, idx in subwords}
+    if subword_scores:
+        denominator = math.log(sum(subword_scores.values()))
+        subword_scores = {
+            swrd: math.log(val) - denominator
+            for swrd, val in subword_scores.items()
+    }
+
+    counts = expected_counts(word, subword_scores)
+    counts_list = [(swrd, math.exp(x)) for swrd, x in counts.items()]
+    counts_list.sort(key=lambda x: -x[1])
+    return counts_list
 
 
 def main():
@@ -95,6 +127,13 @@ def main():
         choices=["fasttext", "w2v"])
     parser.add_argument(
         "--inference-mode", default="sum", choices=["sum", "maxmin"])
+    parser.add_argument(
+        "--expected-counts", default=False, action="store_true",
+        help="Return expected counts.")
+    parser.add_argument(
+        "--excluded", default=None, type=argparse.FileType("r"),
+        help="File with a list of forbidden subwords.",
+        required=False)
     args = parser.parse_args()
 
     logging.info("Load word embeddings model from %s.", args.fasttext)
@@ -109,6 +148,12 @@ def main():
     for line in args.subword_vocab:
         subwords.append(line.strip())
     args.subword_vocab.close()
+
+    exclude_subwords = None
+    if args.excluded is not None:
+        logging.info("Loading excluded subwords from args.excluded.")
+        exclude_subwords = {line.rstrip() for line in args.excluded}
+        args.excluded.close()
 
     logging.info("Load subword embeddings from '%s'.", args.subword_embeddings)
     subword_embeddings = np.loadtxt(args.subword_embeddings)
@@ -128,18 +173,25 @@ def main():
 
     logging.info("Segment words.")
     for line in args.input:
-        segmentations = try_segment(
-            line.strip(), fasttext, subwrd2idx,
-            subword_embeddings,
-            inference_mode=args.inference_mode,
-            sample=args.sample)
-        #print(segmentations[0][0])
-        if args.sample:
-            segmnetation_options = {
-                sbw for seg, _ in segmentations[:args.sample] for sbw in seg.split()}
-            print(" ".join(segmnetation_options))
+        if args.expected_counts:
+            expected_counts = expected_counts_segment(
+                line.strip(), fasttext, subwrd2idx,
+                subword_embeddings)
+            print(" ".join(f"{s} {v}" for s, v in expected_counts))
         else:
-            print(segmentations[0][0])
+            segmentations = try_segment(
+                line.strip(), fasttext, subwrd2idx,
+                subword_embeddings,
+                inference_mode=args.inference_mode,
+                sample=args.sample,
+                exclude_subwords=exclude_subwords)
+
+            if args.sample:
+                segmnetation_options = {
+                    sbw for seg, _ in segmentations[:args.sample] for sbw in seg.split()}
+                print(" ".join(segmnetation_options))
+            else:
+                print(segmentations[0][0])
         #for seg in segmentations[:10]:
         #    print(seg)
 
