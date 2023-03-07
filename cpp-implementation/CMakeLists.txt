@@ -19,7 +19,8 @@ find_package (Eigen3 3.4 REQUIRED NO_MODULE)
 add_executable(train_subword_embeddings
   src/train_subword_embeddings.cpp
   src/vocabs.cpp
-  src/substring_stats.cpp)
+  src/substring_stats.cpp
+  src/cosine_viterbi.cpp)
 
 add_executable(merge_contexts src/merge_contexts.cpp)
 

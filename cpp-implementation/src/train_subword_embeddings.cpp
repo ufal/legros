@@ -14,53 +14,128 @@
 #include <string>
 #include <iostream>
 
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
 #include "CLI11.hpp"
 
 #include "vocabs.h"
-#include "word_cooccurrence_matrix.h"
 #include "substring_stats.h"
+#include "cosine_viterbi.h"
 
 struct opt {
   std::string subword_vocab;
-  std::string word_vocab;
-  //std::string cooccurrence_matrix;
+  std::string embeddings_file;
   std::string allowed_substrings;
   std::string fasttext_output_pseudoinverse;
+
   std::string output;
   std::string train_data;
 
+  std::string segmentations_prefix("segmentations.");
+  std::string embeddings_prefix("subword_embeddings.");
+
+  int fasttext_dim = 200;
   int window_size = 3;
+  int max_subword = 10;
+  int epochs = 1;
 } opt;
 
 void get_options(CLI::App& app) {
-  app.add_option("word_vocabulary", opt.word_vocab,
-                 "Word vocabulary, word per line.")
+  app.add_option(
+      "embeddings_file", opt.embeddings_file, "Word embeddings.")
       ->required()
       ->check(CLI::ExistingFile);
 
-  app.add_option("subword_vocabulary", opt.subword_vocab,
-                 "Subword vocabulary, subword per line.")
+  app.add_option(
+      "subword_vocabulary", opt.subword_vocab,
+      "Subword vocabulary, subword per line.")
       ->required()
       ->check(CLI::ExistingFile);
 
-  app.add_option("train_data", opt.train_data,
-                 "Training data for cooccurrence matrix.")
+  app.add_option(
+      "train_data", opt.train_data, "Training data for cooccurrence matrix.")
       ->required()
       ->check(CLI::ExistingFile);
 
-  app.add_option("--allowed-substrings", opt.allowed_substrings,
-                 "List of words accompanied with allowed substrings.")
+  app.add_option(
+      "--allowed-substrings", opt.allowed_substrings,
+      "List of words accompanied with allowed substrings.")
       ->check(CLI::ExistingFile);
 
-  // app.add_option(
-  //   "word_cooccurrence_matrix", opt.cooccurrence_matrix,
-  //   "Word cooccurrence matrix.")
-  //   ->required()
-  //   ->check(CLI::ExistingFile);
+  app.add_option(
+      "--fastext-output-pseudoinverse", opt.fasttext_output_pseudoinverse,
+      "Pseudo-inverse of the fasttext output matrix")
+      ->required()
+      ->check(CLI::ExistingFile);
 
-  app.add_option("--window-size",
-                 opt.window_size, "Window size.");
+  app.add_option(
+      "--fasttext-dim", opt.fasttext_dim,
+      "Dimension of the fasttext embeddings.");
 
+  app.add_option(
+      "--epochs", opt.epochs, "Run for this number of iterations.");
+
+  app.add_option(
+      "--window-size", opt.window_size, "Window size.");
+
+  app.add_option(
+      "--max-subword", opt.max_subword, "Maximum subword length.");
+
+  app.add_option(
+      "--segm-prefix", opt.segmentations_prefix, "Prefix for segmentations checkpoints.");
+
+  app.add_option(
+      "--emb-prefix", opt.embeddings_prefix, "Prefix for embedding checkpoints.");
+}
+
+
+
+// step 3: fill subword-word cooccurrence matrix
+void word_subword_cooccurrences(
+    Eigen::MatrixXf& c_sub,
+    const Embeddings& word_vocab,
+    const Vocab& subword_vocab,
+    const InverseAllowedSubstringMap& a_sub_inv,
+    const std::vector<std::unordered_map<int, int>>& sparse_c_v) {
+
+#pragma omp parallel for
+  for(int i = 0; i < subword_vocab.size(); ++i) {
+
+    std::string subword = subword_vocab[i];
+    if(a_sub_inv.count(subword) == 0)
+      continue;
+
+    for(std::pair<std::string, float> wordscores : a_sub_inv.at(subword)) {
+
+      if(!word_vocab.contains(wordscores.first))
+        continue;
+
+      for(std::pair<int, int> cooccurs : sparse_c_v.at(word_vocab[wordscores.first])) {
+        int num = cooccurs.second;
+        int j = cooccurs.first;
+
+#pragma omp atomic
+        c_sub(i, j) += num * wordscores.second;
+      }
+    }
+  }
+}
+
+void save_embedding_checkpoint(
+    const std::string& path,
+    const Eigen::MatrixXf& embeddings) {
+  std::ofstream ofs(path);
+  ofs << embeddings << std::endl;
+  ofs.close();
+}
+
+void save_segmented_vocab(const std::string& path,
+                          const std::vector<std::string>& segments) {
+  std::ofstream ofs(path);
+  for(auto it = segments.begin(); it != segments.end(); ++it) {
+    ofs << *it << std::endl;
+  }
+  ofs.close();
 }
 
 int main(int argc, char* argv[]) {
@@ -70,8 +145,8 @@ int main(int argc, char* argv[]) {
 
   // compute word cooccurrence matrix for data C_v (dim. V x V)
   // implemented in word_cooccurrence_matrix.cpp
-  std::cerr << "Loading word vocab: " << opt.word_vocab << std::endl;
-  Vocab word_vocab(opt.word_vocab);
+  std::cerr << "Loading word embeddings: " << opt.embeddings_file << std::endl;
+  Embeddings word_vocab(opt.embeddings_file);
 
   std::string test_word = "včelař";
   std::cerr << "Index of '" << test_word << "': " << word_vocab[test_word]
@@ -81,34 +156,155 @@ int main(int argc, char* argv[]) {
   Vocab subword_vocab(opt.subword_vocab);
 
   int word_count = word_vocab.size();
-  //int subword_count = subword_vocab.size();
+  int subword_count = subword_vocab.size();
 
-  Eigen::MatrixXi c_v(word_count, word_count);
+  CooccurrenceMatrix c_v(word_count, word_count);
   std::cerr << "Populating word cooccurrence stats (" << word_count
             << " words)" << std::endl;
 
-  populate_word_stats<Eigen::MatrixXi>(c_v, word_vocab, opt.train_data, opt.window_size);
+  // --> this thing takes too long after traverse through data
+  populate_word_stats<CooccurrenceMatrix>(
+      c_v, word_vocab, opt.train_data, opt.window_size);
 
   std::cerr << "Done, here are some stats:" << std::endl;
   std::cerr << c_v.topLeftCorner<5,5>() << std::endl;
 
 
+  std::cerr << "Converting to sparse structure" << std::endl;
+
+  //std::vector<std::tuple<int, int, int>> sparse_c_v;
+  std::vector<std::unordered_map<int, int>> sparse_c_v(word_count);
+
+#pragma omp parallel for
+  for(int i = 0; i < word_count; ++i) {
+    std::vector<std::pair<int, int>> row_pairs;
+    for(int j = 0; j < word_count; ++j) {
+      int freq = c_v(i, j);
+      if(freq > 0) {
+        row_pairs.push_back({j, freq});
+      }
+    }
+
+#pragma omp critical
+    sparse_c_v[i] = std::unordered_map<int, int>(row_pairs.begin(), row_pairs.end());
+
+  }
+
+  std::cerr << sparse_c_v[10].size() << std::endl;
 
   // construct allowed substring matrix A (dim. S x V)
+  // this is part of subword_embeddings.cpp
+
+  // std::cerr << "Populating subword-word cooccurrence stats (dim "
+  //           << subword_count <<  " x " << word_count << ")" << std::endl;
+
+  // Eigen::MatrixXi c_sub(subword_count, word_count);
+  // populate_substring_stats<Eigen::MatrixXi>(
+  //     c_sub, word_vocab, subword_vocab, opt.train_data, opt.allowed_substrings,
+  //     opt.window_size, opt.max_subword, /*use_weighted_substrings=*/false);
+
+  //std::cerr << c_sub.topLeftCorner<5,5>() << std::endl;
+
+  // another way how to get c_sub (this one takes way too long)
+  // Eigen::MatrixXi a_sub(subword_count, word_count);
+  // ... code moved below...
 
 
+  // sparse way to get c_sub
+  //Eigen::MatrixXi a_sub(subword_count, word_count);
+  //Eigen::SparseMatrix<int, Eigen::RowMajor> a_sub(subword_count, word_count);
 
-  // compute subword-word cooccurrence matrix AC_v (dim. S x V)
+  std::cerr << "Loading list of allowed substrings from " << opt.allowed_substrings << std::endl;
+  AllowedSubstringMap a_sub;
+  InverseAllowedSubstringMap a_sub_inv;
+  load_allowed_substrings(a_sub, a_sub_inv, opt.allowed_substrings);
 
+  std::cerr << "Loading pseudo-inverse of fasttext output matrix from " << opt.fasttext_output_pseudoinverse << std::endl;
+  std::ifstream fasttext_fh(opt.fasttext_output_pseudoinverse);
+  Eigen::MatrixXf pinv(word_count, opt.fasttext_dim);
 
-  // get subword embeddings from AC_v
+  int i = 0;
+  for(std::string line; std::getline(fasttext_fh, line); ++i) {
+    std::stringstream linestream(line);
 
-  // segment data using subword embeddings - unigram model
+    for(int j = 0; j < word_count; ++j) {
+      linestream >> pinv(j, i);
+    }
+  }
 
-  // recompute matrix A
+  std::cerr << pinv.block(0,0,5,5) << std::endl;
+  std::cerr << "Pseudo-inverse dim: " << pinv.rows() << " x " << pinv.cols() << std::endl;
 
+  CosineViterbi decoder(word_vocab, subword_vocab);
 
+  std::string subw_checkpoint_prefix = "subword_embeddings.";
+  std::string segm_checkpoint_prefix = "segmentations.";
 
+  // ====== here the algorithm begins
+  for(int epoch = 0; epoch < opt.epochs; ++epoch) {
+    std::cerr << "Epoch " << epoch << " begins." << std::endl;
+
+    std::cerr << "Calculating word-subword cooccurrence matrix. " << std::endl;
+    Eigen::MatrixXf c_sub(subword_count, word_count); // = a_sub * c_v;
+    word_subword_cooccurrences(
+        c_sub, word_vocab, subword_vocab, a_sub_inv, sparse_c_v);
+
+    std::cerr << "Computing subword embeddings" << std::endl;
+
+    c_sub.array() += 0.00001f;
+    Eigen::VectorXf sums = c_sub.rowwise().sum();
+    Eigen::MatrixXf normed = c_sub.array().log().matrix().colwise() - sums.array().log().matrix();
+    Eigen::MatrixXf subword_embeddings =  normed * pinv;
+
+    std::string checkpoint_path = subw_checkpoint_prefix + std::to_string(epoch);
+    std::cerr << "Saving checkpoint to " << checkpoint_path << std::endl;
+    save_embedding_checkpoint(checkpoint_path, subword_embeddings);
+
+    std::cerr << "Counting new subword-word cooccurrences." << std::endl;
+    InverseAllowedSubstringMap a_sub_inv_next; // maps subword to pairs word and score
+
+    // připravit novou matici A pomocí for cyklu níže:
+    std::string checkpoint_vocab_path = segm_checkpoint_prefix + std::to_string(epoch);
+
+    std::ofstream ofs(checkpoint_vocab_path);
+    std::vector<std::string> segmented_vocab(word_count);
+#pragma omp parallel for
+    for(i = 0; i < word_count; ++i) {
+      std::string word = word_vocab[i];
+      std::vector<std::string> segm;
+
+      decoder.viterbi_decode(segm, subword_embeddings, word);
+
+      std::pair<std::string, float> word_pair{word, 1.0};
+
+      std::string sep = "";
+      std::ostringstream oss;
+
+      for(auto it = segm.begin(); it != segm.end(); ++it) {
+        std::string subword = *it;
+        oss << sep << subword;
+        sep = " ";
+
+#pragma omp critical
+        {
+          if(a_sub_inv_next.count(subword) == 0)
+            a_sub_inv_next.insert({subword, std::vector<std::pair<std::string, float>>{word_pair}});
+          else
+            a_sub_inv_next.at(subword).push_back(word_pair);
+        }
+
+      }
+      segmented_vocab[i] = oss.str();
+    }
+
+    std::string segmentations_path = segm_checkpoint_prefix + std::to_string(epoch);
+    std::cerr << "Saving segmentations to " << segmentations_path << std::endl;
+    save_segmented_vocab(segmentations_path, segmented_vocab);
+
+    // UPDATE
+    a_sub_inv = a_sub_inv_next;
+
+  } // for epoch
 
   return 0;
 }

@@ -85,23 +85,19 @@ void try_add_to_stats(
     T& stats,
     const std::string &target_token,
     const std::string &window_token,
-    const std::unordered_map<std::string,int> &word_to_index) {
+    const Vocab& word_vocab) {
 
-    if(word_to_index.count(target_token) == 0) {
+    if(!word_vocab.contains(target_token))
         return;
-    }
 
-    int word_index = word_to_index.at(target_token);
-
-    if(word_to_index.count(window_token) == 0) {
+    if(!word_vocab.contains(window_token))
         return;
-    }
 
-    int stat_index = word_to_index.at(window_token);
+    int target_index = word_vocab[target_token];
+    int window_index = word_vocab[window_token];
 
-    #pragma omp atomic
-        get_2d(stats, stat_index, word_index) += 1;
-
+#pragma omp atomic
+        get_2d(stats, window_index, target_index) += 1;
 }
 
 template<typename T>
@@ -109,7 +105,7 @@ void process_buffer(
         const std::vector<std::string>& buffer,
         int end,
         T& stats,
-        const std::unordered_map<std::string, int>&  word_to_index) {
+        const Vocab&  word_vocab) {
 
     #pragma omp parallel for
     for(int i = 0; i < end; ++i) {
@@ -124,11 +120,11 @@ void process_buffer(
         for(auto token: tokens) {
 
             for(int j = std::max(0, t - opt.window_size); j < t; ++j) {
-                try_add_to_stats<T>(stats, tokens[j], token, word_to_index);
+                try_add_to_stats<T>(stats, tokens[j], token, word_vocab);
             }
 
             for(int k = t + 1; k < std::min(t + 1 + opt.window_size, (int)tokens.size()); ++k) {
-                try_add_to_stats<T>(stats, tokens[k], token, word_to_index);
+                try_add_to_stats<T>(stats, tokens[k], token, word_vocab);
             }
             ++t;
         }
@@ -138,7 +134,7 @@ void process_buffer(
 template<typename T>
 void populate_word_stats(
         T& stats,
-        const std::unordered_map<std::string, int>&  word_to_index) {
+        const Vocab&  word_vocab) {
 
     std::cerr << "Iterating over sentences from " << opt.training_data_file << std::endl;
     std::ifstream input_fh(opt.training_data_file);
@@ -155,14 +151,14 @@ void populate_word_stats(
 
         // full buffer -> process
         if(buffer_pos == opt.buffer_size) {
-            process_buffer<T>(buffer, buffer_pos, stats, word_to_index);
+            process_buffer<T>(buffer, buffer_pos, stats, word_vocab);
             buffer_pos = 0;
         }
     }
 
     // process the rest of the buffer
     if(buffer_pos > 0) {
-        process_buffer<T>(buffer, buffer_pos, stats, word_to_index);
+        process_buffer<T>(buffer, buffer_pos, stats, word_vocab);
     }
 
     std::cerr << "Read " << lineno << " lines in total." << std::endl;
@@ -174,20 +170,22 @@ int main(int argc, char* argv[]) {
     CLI11_PARSE(app, argc, argv);
 
     std::cerr << "Loading word vocab: " << opt.word_vocab_file << std::endl;
-    std::unordered_map<std::string, int> word_to_index;
-    get_word_to_index(word_to_index, opt.word_vocab_file);
+    Vocab word_vocab(opt.word_vocab_file);
 
     std::string test_word = "včelař";
-    std::cerr << "Index of '" << test_word << "': " << word_to_index[test_word] << std::endl;
-    int word_count = word_to_index.size();
+    std::cerr << "Index of '" << test_word << "': " << word_vocab[test_word] << std::endl;
+    int word_count = word_vocab.size();
 
     //Eigen::SparseMatrix<int> stats(word_count, word_count);
     Eigen::MatrixXi stats(word_count, word_count);
     //std::unordered_map<int, std::unordered_map<int, int>> stats;
+    //std::vector<std::vector<int>> stats(word_count, std::vector<int>(word_count));
 
-    //populate_word_stats<Eigen::SparseMatrix<int>>(stats, word_to_index);
-    populate_word_stats<Eigen::MatrixXi>(stats, word_to_index);
-    //populate_word_stats<std::unordered_map<int, std::unordered_map<int, int>>>(stats, word_to_index);
+
+    //populate_word_stats<Eigen::SparseMatrix<int>>(stats, word_vocab);
+    populate_word_stats<Eigen::MatrixXi>(stats, word_vocab);
+    //populate_word_stats<std::unordered_map<int, std::unordered_map<int, int>>>(stats, word_vocab);
+    //populate_word_stats<std::vector<std::vector<int>>>(stats, word_vocab);
 
     for(int i = 0 ; i < 5; ++i) {
         for(int j = 0; j < 5; ++j) {

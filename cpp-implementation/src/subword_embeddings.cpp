@@ -19,6 +19,7 @@ struct opt {
   int window_size = 3;
   int fasttext_dim = 200;
   int shard_size = 1000;
+  bool weighted_substrings = false;
 } opt;
 
 void get_options(CLI::App& app) {
@@ -51,6 +52,11 @@ void get_options(CLI::App& app) {
     opt.allowed_substrings, "List of words accompanied with allowed substrings.")
     ->check(CLI::ExistingFile);
 
+  app.add_option(
+      "--weighted-substrings",
+      opt.weighted_substrings,
+      "Whether the allowed substrings file contains weights for the substrings.");
+
   app.add_option("--max-subword",
     opt.max_subword, "Maximum subword length.");
 
@@ -76,34 +82,35 @@ int main(int argc, char* argv[]) {
               << std::endl;
     Vocab word_vocab(opt.word_vocab_file);
 
-    std::cerr << "Index of 'společenství': " << word_vocab["společenství"] << std::endl;
+    //std::cerr << "Index of 'společenství': " << word_vocab["společenství"] << std::endl;
 
     int subword_count = subword_vocab.size();
     int word_count = word_vocab.size();
 
     std::cerr << "Populating matrix stats (dim " << subword_count <<  " x " << word_count << ")" << std::endl;
-    Eigen::MatrixXi stats(subword_count, word_count);
-    populate_substring_stats<Eigen::MatrixXi>(stats, word_vocab, subword_vocab, opt.training_data_file,
-                                              opt.allowed_substrings, opt.window_size, opt.max_subword);
+    Eigen::MatrixXf stats(subword_count, word_count);
+    populate_substring_stats<Eigen::MatrixXf>(stats, word_vocab, subword_vocab, opt.training_data_file,
+                                              opt.allowed_substrings, opt.window_size, opt.max_subword,
+                                              opt.weighted_substrings);
     std::cerr << stats.topLeftCorner<5,5>() << std::endl;
 
     // std::cerr << "Number of zero elements in stats: " << std::count(stats.data(), stats.data() + stats.size(), 0) << std::endl;
     // std::cerr << "Stats total size: " << stats.size() << std::endl;
 
-    std::cerr << "Casting to float" << std::endl;
-    Eigen::MatrixXf statsf = stats.cast<float>(); // TODO SPARSE this should work seamlessly
+    //std::cerr << "Casting to float" << std::endl;
+    //Eigen::MatrixXf statsf = stats.cast<float>(); // TODO SPARSE this should work seamlessly
 
     std::cerr << "Smoothing" << std::endl;
-    statsf.array() += 0.00001f;  // TODO SPARSE: just remember to add this
+    stats.array() += 0.00001f;  // TODO SPARSE: just remember to add this
 
     std::cerr << "Computing log&norm" << std::endl;
     //np.log(subword_data) - np.log(subword_data.sum(1, keepdims=True)))
-    Eigen::VectorXf sums = statsf.rowwise().sum();   // TODO SPARSE: sum sparsely, then add smoothing coeff * stats.cols() to each row.
+    Eigen::VectorXf sums = stats.rowwise().sum();   // TODO SPARSE: sum sparsely, then add smoothing coeff * stats.cols() to each row.
     std::cerr << "Sums of the first five rows:" << std::endl;
     std::cerr << sums(Eigen::seq(0, 4)) << std::endl;
     std::cerr << "Sums size: " << sums.size() <<std::endl;
 
-    Eigen::MatrixXf normed = statsf.array().log().matrix().colwise() - sums.array().log().matrix();
+    Eigen::MatrixXf normed = stats.array().log().matrix().colwise() - sums.array().log().matrix();
         // TODO SPARSE: Only compute for non-infinite coefficients, which should work seamlessly
 
     std::cerr << "Top-right corner of the normalized stats matrix:" << std::endl;
