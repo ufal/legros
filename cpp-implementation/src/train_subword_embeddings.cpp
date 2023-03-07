@@ -31,8 +31,8 @@ struct opt {
   std::string output;
   std::string train_data;
 
-  std::string segmentations_prefix("segmentations.");
-  std::string embeddings_prefix("subword_embeddings.");
+  std::string segmentations_prefix = "segmentations.";
+  std::string embeddings_prefix = "subword_embeddings.";
 
   int fasttext_dim = 200;
   int window_size = 3;
@@ -237,9 +237,6 @@ int main(int argc, char* argv[]) {
 
   CosineViterbi decoder(word_vocab, subword_vocab);
 
-  std::string subw_checkpoint_prefix = "subword_embeddings.";
-  std::string segm_checkpoint_prefix = "segmentations.";
-
   // ====== here the algorithm begins
   for(int epoch = 0; epoch < opt.epochs; ++epoch) {
     std::cerr << "Epoch " << epoch << " begins." << std::endl;
@@ -256,7 +253,7 @@ int main(int argc, char* argv[]) {
     Eigen::MatrixXf normed = c_sub.array().log().matrix().colwise() - sums.array().log().matrix();
     Eigen::MatrixXf subword_embeddings =  normed * pinv;
 
-    std::string checkpoint_path = subw_checkpoint_prefix + std::to_string(epoch);
+    std::string checkpoint_path = opt.embeddings_prefix + std::to_string(epoch);
     std::cerr << "Saving checkpoint to " << checkpoint_path << std::endl;
     save_embedding_checkpoint(checkpoint_path, subword_embeddings);
 
@@ -264,9 +261,6 @@ int main(int argc, char* argv[]) {
     InverseAllowedSubstringMap a_sub_inv_next; // maps subword to pairs word and score
 
     // připravit novou matici A pomocí for cyklu níže:
-    std::string checkpoint_vocab_path = segm_checkpoint_prefix + std::to_string(epoch);
-
-    std::ofstream ofs(checkpoint_vocab_path);
     std::vector<std::string> segmented_vocab(word_count);
 #pragma omp parallel for
     for(i = 0; i < word_count; ++i) {
@@ -297,7 +291,7 @@ int main(int argc, char* argv[]) {
       segmented_vocab[i] = oss.str();
     }
 
-    std::string segmentations_path = segm_checkpoint_prefix + std::to_string(epoch);
+    std::string segmentations_path = opt.segmentations_prefix + std::to_string(epoch);
     std::cerr << "Saving segmentations to " << segmentations_path << std::endl;
     save_segmented_vocab(segmentations_path, segmented_vocab);
 
