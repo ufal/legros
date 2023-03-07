@@ -26,6 +26,19 @@ void get_word_to_index(
   file.close();
 }
 
+// taken from https://stackoverflow.com/a/21068014/1173884
+void removeRow(Eigen::MatrixXf& matrix, unsigned int rowToRemove) {
+  unsigned int numRows = matrix.rows()-1;
+  unsigned int numCols = matrix.cols();
+
+  if(rowToRemove < numRows)
+    matrix.block(rowToRemove, 0, numRows - rowToRemove, numCols)
+        = matrix.block(rowToRemove + 1, 0, numRows - rowToRemove, numCols);
+
+  matrix.conservativeResize(numRows,numCols);
+}
+
+
 Vocab::Vocab(const std::string& filename) {
   std::ifstream file(filename);
   int i = 0;
@@ -72,4 +85,22 @@ Embeddings::Embeddings(const std::string& filename) {
       ss >> emb(i, j);
     }
   }
+}
+
+void Vocab::remove(const std::string& word) {
+  if(contains(word))
+    remove(word_to_index.at(word));
+}
+
+void Vocab::remove(int index) {
+  std::string word = index_to_word[index];
+  index_to_word.erase(index_to_word.begin() + index);
+  word_to_index.erase(word);
+}
+
+void Embeddings::remove(int index) {
+  std::string word = index_to_word[index];
+  index_to_word.erase(index_to_word.begin() + index);
+  word_to_index.erase(word);
+  removeRow(emb, index);
 }

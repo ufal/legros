@@ -24,7 +24,8 @@ class Vocab {
   int operator[](const std::string& word) const { return word_to_index.at(word); }
   const std::string& operator[](int index) const { return index_to_word[index]; }
 
-
+  void remove(const std::string& word);
+  virtual void remove(int index);
 
   Vocab(const std::string& filename);
   virtual ~Vocab() {};
@@ -39,5 +40,8 @@ class Embeddings : public Vocab {
   int embedding_dim;
   Eigen::MatrixXf emb;
 
+  virtual void remove(int index);
+
   Embeddings(const std::string &filename);
+  virtual ~Embeddings() {};
 };
