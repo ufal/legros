@@ -34,6 +34,7 @@ struct opt {
 
   std::string segmentations_prefix = "segmentations.";
   std::string embeddings_prefix = "subword_embeddings.";
+  std::string subwords_prefix = "subwords.";
 
   int fasttext_dim = 200;
   int window_size = 3;
@@ -87,6 +88,9 @@ void get_options(CLI::App& app) {
 
   app.add_option(
       "--emb-prefix", opt.embeddings_prefix, "Prefix for embedding checkpoints.");
+
+  app.add_option(
+      "--subw-prefix", opt.subwords_prefix, "Prefix for subword vocabularies.");
 }
 
 // step 3: fill subword-word cooccurrence matrix
@@ -128,14 +132,15 @@ void save_embedding_checkpoint(
   ofs.close();
 }
 
-void save_segmented_vocab(const std::string& path,
-                          const std::vector<std::string>& segments) {
+void save_strings(const std::string& path,
+                  const std::vector<std::string>& segments) {
   std::ofstream ofs(path);
-  for(auto it = segments.begin(); it != segments.end(); ++it) {
-    ofs << *it << std::endl;
+  for(auto w: segments) {
+    ofs << w << std::endl;
   }
   ofs.close();
 }
+
 
 int main(int argc, char* argv[]) {
   CLI::App app{"Train subword embeddings using a pseudoEM algorithm."};
@@ -269,7 +274,7 @@ int main(int argc, char* argv[]) {
 
     std::string segmentations_path = opt.segmentations_prefix + std::to_string(epoch);
     std::cerr << "Saving segmentations to " << segmentations_path << std::endl;
-    save_segmented_vocab(segmentations_path, segmented_vocab);
+    save_strings(segmentations_path, segmented_vocab);
 
     // create new subword vocabulary -> filter subwords which are not used in
     // any segmentation
@@ -282,8 +287,9 @@ int main(int argc, char* argv[]) {
     // UPDATE
     subword_vocab = Vocab(new_subwords, true);
     std::cerr << "Updated subword vocabulary size: " << subword_vocab.size() << std::endl;
-
-
+    std::string subwords_path = opt.subwords_prefix + std::to_string(epoch);
+    std::cerr << "Saving subword vocabulary to " << subwords_path << std::endl;
+    save_strings(subwords_path, subword_vocab.index_to_word);
 
     a_sub_inv = a_sub_inv_next;
 
