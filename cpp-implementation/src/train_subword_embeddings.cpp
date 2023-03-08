@@ -24,7 +24,6 @@
 #include "cosine_viterbi.h"
 
 struct opt {
-  std::string subword_vocab;
   std::string embeddings_file;
   std::string allowed_substrings;
   std::string fasttext_output_pseudoinverse;
@@ -38,19 +37,12 @@ struct opt {
 
   int fasttext_dim = 200;
   int window_size = 3;
-  int max_subword = 10;
   int epochs = 1;
 } opt;
 
 void get_options(CLI::App& app) {
   app.add_option(
       "embeddings_file", opt.embeddings_file, "Word embeddings.")
-      ->required()
-      ->check(CLI::ExistingFile);
-
-  app.add_option(
-      "subword_vocabulary", opt.subword_vocab,
-      "Subword vocabulary, subword per line.")
       ->required()
       ->check(CLI::ExistingFile);
 
@@ -79,9 +71,6 @@ void get_options(CLI::App& app) {
 
   app.add_option(
       "--window-size", opt.window_size, "Window size.");
-
-  app.add_option(
-      "--max-subword", opt.max_subword, "Maximum subword length.");
 
   app.add_option(
       "--segm-prefix", opt.segmentations_prefix, "Prefix for segmentations checkpoints.");
@@ -156,10 +145,6 @@ int main(int argc, char* argv[]) {
   std::cerr << "Index of '" << test_word << "': " << word_vocab[test_word]
             << std::endl;
 
-  std::cerr << "Loading subword vocab: " << opt.subword_vocab << std::endl;
-  Vocab subword_vocab(opt.subword_vocab);
-  std::cerr << "Initial subword vocab size: " << subword_vocab.size() << std::endl;
-
   int word_count = word_vocab.size();
 
   CooccurrenceMatrix c_v(word_count, word_count);
@@ -200,6 +185,10 @@ int main(int argc, char* argv[]) {
   AllowedSubstringMap a_sub;
   InverseAllowedSubstringMap a_sub_inv;
   load_allowed_substrings(a_sub, a_sub_inv, opt.allowed_substrings);
+
+  std::cerr << "Loading subword vocab." << std::endl;
+  Vocab subword_vocab(std::views::keys(a_sub_inv), true);
+  std::cerr << "Initial subword vocab size: " << subword_vocab.size() << std::endl;
 
   std::cerr << "Loading pseudo-inverse of fasttext output matrix from " << opt.fasttext_output_pseudoinverse << std::endl;
   std::ifstream fasttext_fh(opt.fasttext_output_pseudoinverse);
