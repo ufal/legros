@@ -113,6 +113,41 @@ void word_subword_cooccurrences(
   }
 }
 
+void sparse_cooccurrences(
+    std::vector<std::unordered_map<int, int>>& sparse_c_v,
+    const Embeddings& word_vocab,
+    const std::string& train_data,
+    int window_size) {
+
+
+  CooccurrenceMatrix c_v(word_vocab.size(), word_vocab.size());
+
+  // --> this thing takes too long after traverse through data
+  populate_word_stats<CooccurrenceMatrix>(
+      c_v, word_vocab, train_data, window_size);
+
+  std::cerr << "Done, here are some stats:" << std::endl;
+  std::cerr << c_v.topLeftCorner<5,5>() << std::endl;
+
+
+  std::cerr << "Converting to sparse structure" << std::endl;
+
+#pragma omp parallel for
+  for(int i = 0; i < word_vocab.size(); ++i) {
+    std::vector<std::pair<int, int>> row_pairs;
+    for(int j = 0; j < word_vocab.size(); ++j) {
+      int freq = c_v(i, j);
+      if(freq > 0) {
+        row_pairs.push_back({j, freq});
+      }
+    }
+
+#pragma omp critical
+    sparse_c_v[i] = std::unordered_map<int, int>(row_pairs.begin(), row_pairs.end());
+  }
+
+}
+
 void save_embedding_checkpoint(
     const std::string& path,
     const Eigen::MatrixXf& embeddings) {
@@ -147,38 +182,10 @@ int main(int argc, char* argv[]) {
 
   int word_count = word_vocab.size();
 
-  CooccurrenceMatrix c_v(word_count, word_count);
   std::cerr << "Populating word cooccurrence stats (" << word_count
             << " words)" << std::endl;
-
-  // --> this thing takes too long after traverse through data
-  populate_word_stats<CooccurrenceMatrix>(
-      c_v, word_vocab, opt.train_data, opt.window_size);
-
-  std::cerr << "Done, here are some stats:" << std::endl;
-  std::cerr << c_v.topLeftCorner<5,5>() << std::endl;
-
-
-  std::cerr << "Converting to sparse structure" << std::endl;
-
-  //std::vector<std::tuple<int, int, int>> sparse_c_v;
   std::vector<std::unordered_map<int, int>> sparse_c_v(word_count);
-
-#pragma omp parallel for
-  for(int i = 0; i < word_count; ++i) {
-    std::vector<std::pair<int, int>> row_pairs;
-    for(int j = 0; j < word_count; ++j) {
-      int freq = c_v(i, j);
-      if(freq > 0) {
-        row_pairs.push_back({j, freq});
-      }
-    }
-
-#pragma omp critical
-    sparse_c_v[i] = std::unordered_map<int, int>(row_pairs.begin(), row_pairs.end());
-
-  }
-
+  sparse_cooccurrences(sparse_c_v, word_vocab, opt.train_data, opt.window_size);
   std::cerr << sparse_c_v[10].size() << std::endl;
 
   std::cerr << "Loading list of allowed substrings from " << opt.allowed_substrings << std::endl;
