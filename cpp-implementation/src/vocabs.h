@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <vector>
 #include <string>
+#include <ranges>
 #include <Eigen/Dense>
 
 void get_word_to_index(
@@ -24,11 +25,18 @@ class Vocab {
   int operator[](const std::string& word) const { return word_to_index.at(word); }
   const std::string& operator[](int index) const { return index_to_word[index]; }
 
-  void remove(const std::string& word);
-  virtual void remove(int index);
-
   Vocab(const std::string& filename);
-  virtual ~Vocab() {};
+
+  Vocab(std::ranges::input_range auto&& words, bool unused_hack) {
+    int i = 0;
+    for(std::string w: words) {
+      index_to_word.push_back(w);
+      word_to_index.insert({w, i});
+      ++i;
+    }
+  }
+
+  virtual ~Vocab() {}
 };
 
 
@@ -39,8 +47,6 @@ class Embeddings : public Vocab {
  public:
   int embedding_dim;
   Eigen::MatrixXf emb;
-
-  virtual void remove(int index);
 
   Embeddings(const std::string &filename);
   virtual ~Embeddings() {};

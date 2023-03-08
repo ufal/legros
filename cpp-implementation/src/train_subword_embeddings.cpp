@@ -13,6 +13,7 @@
 
 #include <string>
 #include <iostream>
+#include <ranges>
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -88,8 +89,6 @@ void get_options(CLI::App& app) {
       "--emb-prefix", opt.embeddings_prefix, "Prefix for embedding checkpoints.");
 }
 
-
-
 // step 3: fill subword-word cooccurrence matrix
 void word_subword_cooccurrences(
     Eigen::MatrixXf& c_sub,
@@ -154,9 +153,9 @@ int main(int argc, char* argv[]) {
 
   std::cerr << "Loading subword vocab: " << opt.subword_vocab << std::endl;
   Vocab subword_vocab(opt.subword_vocab);
+  std::cerr << "Initial subword vocab size: " << subword_vocab.size() << std::endl;
 
   int word_count = word_vocab.size();
-  int subword_count = subword_vocab.size();
 
   CooccurrenceMatrix c_v(word_count, word_count);
   std::cerr << "Populating word cooccurrence stats (" << word_count
@@ -192,28 +191,6 @@ int main(int argc, char* argv[]) {
 
   std::cerr << sparse_c_v[10].size() << std::endl;
 
-  // construct allowed substring matrix A (dim. S x V)
-  // this is part of subword_embeddings.cpp
-
-  // std::cerr << "Populating subword-word cooccurrence stats (dim "
-  //           << subword_count <<  " x " << word_count << ")" << std::endl;
-
-  // Eigen::MatrixXi c_sub(subword_count, word_count);
-  // populate_substring_stats<Eigen::MatrixXi>(
-  //     c_sub, word_vocab, subword_vocab, opt.train_data, opt.allowed_substrings,
-  //     opt.window_size, opt.max_subword, /*use_weighted_substrings=*/false);
-
-  //std::cerr << c_sub.topLeftCorner<5,5>() << std::endl;
-
-  // another way how to get c_sub (this one takes way too long)
-  // Eigen::MatrixXi a_sub(subword_count, word_count);
-  // ... code moved below...
-
-
-  // sparse way to get c_sub
-  //Eigen::MatrixXi a_sub(subword_count, word_count);
-  //Eigen::SparseMatrix<int, Eigen::RowMajor> a_sub(subword_count, word_count);
-
   std::cerr << "Loading list of allowed substrings from " << opt.allowed_substrings << std::endl;
   AllowedSubstringMap a_sub;
   InverseAllowedSubstringMap a_sub_inv;
@@ -235,14 +212,13 @@ int main(int argc, char* argv[]) {
   std::cerr << pinv.block(0,0,5,5) << std::endl;
   std::cerr << "Pseudo-inverse dim: " << pinv.rows() << " x " << pinv.cols() << std::endl;
 
-  CosineViterbi decoder(word_vocab, subword_vocab);
 
   // ====== here the algorithm begins
   for(int epoch = 0; epoch < opt.epochs; ++epoch) {
     std::cerr << "Epoch " << epoch << " begins." << std::endl;
 
     std::cerr << "Calculating word-subword cooccurrence matrix. " << std::endl;
-    Eigen::MatrixXf c_sub(subword_count, word_count); // = a_sub * c_v;
+    Eigen::MatrixXf c_sub(subword_vocab.size(), word_count); // = a_sub * c_v;
     word_subword_cooccurrences(
         c_sub, word_vocab, subword_vocab, a_sub_inv, sparse_c_v);
 
@@ -267,7 +243,7 @@ int main(int argc, char* argv[]) {
       std::string word = word_vocab[i];
       std::vector<std::string> segm;
 
-      decoder.viterbi_decode(segm, subword_embeddings, word);
+      viterbi_decode(segm, word_vocab, subword_vocab, subword_embeddings, word);
 
       std::pair<std::string, float> word_pair{word, 1.0};
 
@@ -289,16 +265,29 @@ int main(int argc, char* argv[]) {
 
       }
       segmented_vocab[i] = oss.str();
-    }
+    } // word
 
     std::string segmentations_path = opt.segmentations_prefix + std::to_string(epoch);
     std::cerr << "Saving segmentations to " << segmentations_path << std::endl;
     save_segmented_vocab(segmentations_path, segmented_vocab);
 
+    // create new subword vocabulary -> filter subwords which are not used in
+    // any segmentation
+    auto filter_unused = [&a_sub_inv_next](std::string subword) {
+      return a_sub_inv_next.count(subword) > 0;
+    };
+
+    auto new_subwords = subword_vocab.index_to_word | std::views::filter(filter_unused);
+
     // UPDATE
+    subword_vocab = Vocab(new_subwords, true);
+    std::cerr << "Updated subword vocabulary size: " << subword_vocab.size() << std::endl;
+
+
+
     a_sub_inv = a_sub_inv_next;
 
-  } // for epoch
+  } // epoch
 
   return 0;
 }

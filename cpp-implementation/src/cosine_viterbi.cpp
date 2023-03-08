@@ -3,25 +3,24 @@
 #include <limits>
 #include <algorithm>
 
-CosineViterbi::CosineViterbi(const Embeddings& words, const Vocab& subwords) : words_(words), subwords_(subwords) {}
-
-
-void CosineViterbi::subword_cosine_distances(
+void subword_cosine_distances(
     std::map<int, float>& distances,
+    const Embeddings& words,
+    const Vocab& subwords,
     const Eigen::MatrixXf& subword_embeddings,
-    const std::string& word) const {
+    const std::string& word) {
 
-  Eigen::VectorXf word_embedding = words_.emb.row(words_[word]);
+  Eigen::VectorXf word_embedding = words.emb.row(words[word]);
   float emb_norm = word_embedding.norm();
 
   for(size_t begin = 0; begin < word.size(); ++begin) {
     for(size_t end = begin + 1; end < word.size() + 1; ++end) {
       std::string subword = word.substr(begin, end - begin);
 
-      if(!subwords_.contains(subword))
+      if(!subwords.contains(subword))
         continue;
 
-      int subword_index = subwords_[subword];
+      int subword_index = subwords[subword];
 
       // retrieve subword embedding - corresponding row in subw.emb matrix
       Eigen::VectorXf subword_embedding = subword_embeddings.row(subword_index);
@@ -34,13 +33,15 @@ void CosineViterbi::subword_cosine_distances(
   }
 }
 
-void CosineViterbi::viterbi_decode(
+void viterbi_decode(
     std::vector<std::string>& segmentation,
+    const Embeddings& words,
+    const Vocab& subwords,
     const Eigen::MatrixXf& subword_embeddings,
-    const std::string& word) const {
+    const std::string& word) {
 
   std::map<int, float> distances;
-  subword_cosine_distances(distances, subword_embeddings, word);
+  subword_cosine_distances(distances, words, subwords, subword_embeddings, word);
 
   // segment word using viterbi algorithm to find path with highest score
   std::vector<int> predecesors(word.size(), 0);
@@ -57,10 +58,10 @@ void CosineViterbi::viterbi_decode(
     for(size_t j = 0; j < i; ++j) {
       // going from j to i.
       std::string subword_candidate = word.substr(j, i - j);
-      if(!subwords_.contains(subword_candidate))
+      if(!subwords.contains(subword_candidate))
         continue;
 
-      auto sub_index = subwords_[subword_candidate];
+      auto sub_index = subwords[subword_candidate];
       float path_score = costs[j] + distances.at(sub_index);
 
       if(path_score > max_score) {

@@ -54,6 +54,7 @@ Vocab::Vocab(const std::string& filename) {
   }
 }
 
+
 Embeddings::Embeddings(const std::string& filename) {
   std::ifstream embedding_fh(filename);
 
@@ -85,22 +86,4 @@ Embeddings::Embeddings(const std::string& filename) {
       ss >> emb(i, j);
     }
   }
-}
-
-void Vocab::remove(const std::string& word) {
-  if(contains(word))
-    remove(word_to_index.at(word));
-}
-
-void Vocab::remove(int index) {
-  std::string word = index_to_word[index];
-  index_to_word.erase(index_to_word.begin() + index);
-  word_to_index.erase(word);
-}
-
-void Embeddings::remove(int index) {
-  std::string word = index_to_word[index];
-  index_to_word.erase(index_to_word.begin() + index);
-  word_to_index.erase(word);
-  removeRow(emb, index);
 }
