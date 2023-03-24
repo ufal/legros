@@ -22,10 +22,11 @@ void load_weighted_allowed_substrings(
 
     std::vector<std::pair<std::string, float>> pairs;
 
-    while(iss) {
+    std::string first;
+    while(iss >> first) {
       std::pair<std::string, float> pair;
 
-      iss >> pair.first;
+      pair.first = first;
       iss >> pair.second;
 
       pairs.push_back(pair);
@@ -48,10 +49,11 @@ void load_allowed_substrings(
 
     std::vector<std::pair<std::string, float>> pairs;
 
-    while(iss) {
+    std::string first;
+    while(iss >> first) {
       std::pair<std::string, float> pair;
 
-      iss >> pair.first;
+      pair.first = first;
       pair.second = 1.0;
 
       pairs.push_back(pair);
@@ -75,10 +77,8 @@ void load_allowed_substrings( // THIS IS NOT WEIGHTED
 
     std::vector<std::pair<std::string, float>> pairs;
 
-    while(iss) {
-
-      std::string subword;
-      iss >> subword;
+    std::string subword;
+    while(iss >> subword) {
       float score = 1.0;
 
       if(inverse_allowed_substrings.count(subword) == 0) {
