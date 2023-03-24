@@ -175,11 +175,6 @@ int main(int argc, char* argv[]) {
   // implemented in word_cooccurrence_matrix.cpp
   std::cerr << "Loading word embeddings: " << opt.embeddings_file << std::endl;
   Embeddings word_vocab(opt.embeddings_file);
-
-  std::string test_word = "včelař";
-  std::cerr << "Index of '" << test_word << "': " << word_vocab[test_word]
-            << std::endl;
-
   int word_count = word_vocab.size();
 
   std::cerr << "Populating word cooccurrence stats (" << word_count
