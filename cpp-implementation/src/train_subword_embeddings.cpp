@@ -208,10 +208,13 @@ int main(int argc, char* argv[]) {
   std::cerr << pinv.block(0,0,5,5) << std::endl;
   std::cerr << "Pseudo-inverse dim: " << pinv.rows() << " x " << pinv.cols() << std::endl;
 
-
   // ====== here the algorithm begins
   for(int epoch = 0; epoch < opt.epochs; ++epoch) {
     std::cerr << "Epoch " << epoch << " begins." << std::endl;
+
+    std::string subwords_path = opt.subwords_prefix + std::to_string(epoch);
+    std::cerr << "Saving subword vocabulary to " << subwords_path << std::endl;
+    save_strings(subwords_path, subword_vocab.index_to_word);
 
     std::cerr << "Calculating word-subword cooccurrence matrix. " << std::endl;
     Eigen::MatrixXf c_sub(subword_vocab.size(), word_count); // = a_sub * c_v;
@@ -278,9 +281,6 @@ int main(int argc, char* argv[]) {
     // UPDATE
     subword_vocab = Vocab(new_subwords, true);
     std::cerr << "Updated subword vocabulary size: " << subword_vocab.size() << std::endl;
-    std::string subwords_path = opt.subwords_prefix + std::to_string(epoch);
-    std::cerr << "Saving subword vocabulary to " << subwords_path << std::endl;
-    save_strings(subwords_path, subword_vocab.index_to_word);
 
     a_sub_inv = a_sub_inv_next;
 
