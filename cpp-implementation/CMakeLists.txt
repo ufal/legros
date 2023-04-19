@@ -16,6 +16,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "-Ofast")
 
 find_package (Eigen3 3.4 REQUIRED NO_MODULE)
 
+add_executable(bigram_segment
+  src/bigram_segment.cpp)
+
 add_executable(train_subword_embeddings
   src/train_subword_embeddings.cpp
   src/vocabs.cpp
@@ -52,7 +55,6 @@ target_link_libraries (word_cooccurrence_matrix Eigen3::Eigen)
 target_link_libraries (forward_backward Eigen3::Eigen)
 target_link_libraries (test_unigram_model Eigen3::Eigen)
 target_link_libraries (test-eigen Eigen3::Eigen)
-
 
 include_directories(include)
 include_directories(src)
