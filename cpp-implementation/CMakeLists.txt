@@ -9,6 +9,10 @@ if (OPENMP_FOUND)
     set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
 
+find_library(MKL_CORE_LIBRARY mkl_core PATHS /opt/intel/mkl/lib/intel64)
+find_library(MKL_INTEL_THREAD_LIBRARY mkl_intel_thread PATHS /opt/intel/mkl/lib/intel64)
+find_library(MKL_INTEL_LP64_LIBRARY mkl_intel_lp64 PATHS /opt/intel/mkl/lib/intel64)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
@@ -54,7 +58,7 @@ target_link_libraries (train_subword_embeddings Eigen3::Eigen)
 target_link_libraries (word_cooccurrence_matrix Eigen3::Eigen)
 target_link_libraries (forward_backward Eigen3::Eigen)
 target_link_libraries (test_unigram_model Eigen3::Eigen)
-target_link_libraries (test-eigen Eigen3::Eigen)
+target_link_libraries (test-eigen Eigen3::Eigen ${MKL_CORE_LIBRARY} ${MKL_INTEL_THREAD_LIBRARY} ${MKL_INTEL_LP64_LIBRARY})
 
 include_directories(include)
 include_directories(src)
