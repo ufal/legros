@@ -13,7 +13,7 @@
 
 #include "vocabs.h"
 
-typedef Eigen::MatrixXi CooccurrenceMatrix;
+typedef Eigen::MatrixXf CooccurrenceMatrix;
 //typedef std::unordered_map<int, std::unordered_map<int, int>> CooccurrenceMatrix;
 typedef std::unordered_map<std::string, std::vector<std::pair<std::string, float>>> AllowedSubstringMap;
 typedef std::unordered_map<std::string, std::vector<std::pair<std::string, float>>> InverseAllowedSubstringMap;
@@ -267,6 +267,7 @@ void populate_substring_stats(
 
 template<typename T>
 void process_word_buffer(T& stats,
+                         std::vector<int>& word_frequencies,
                          const std::vector<std::string>& buffer,
                          const Vocab& words,
                          int length,
@@ -282,6 +283,8 @@ void process_word_buffer(T& stats,
 
     int t = 0;
     for(auto token: tokens) {
+      if(words.contains(token))
+        word_frequencies[words[token]]++;
 
       for(int j = std::max(0, t - window_size); j < t; ++j) {
         try_add_word_to_stats<T>(stats, words, tokens[j], token);
@@ -298,6 +301,7 @@ void process_word_buffer(T& stats,
 
 template<typename T>
 void populate_word_stats(T& stats,
+                         std::vector<int>& word_frequencies,
                          const Vocab& words,
                          const std::string &training_data_file,
                          int window_size) {
@@ -318,7 +322,7 @@ void populate_word_stats(T& stats,
     if(buffer_pos == BUFFER_SIZE) {
       std::cerr << "Processing buffer; lineno: " << lineno << "\r";
 
-      process_word_buffer<T>(stats, buffer, words, buffer_pos, window_size);
+      process_word_buffer<T>(stats, word_frequencies, buffer, words, buffer_pos, window_size);
       buffer_pos = 0;
     }
   }
@@ -327,7 +331,7 @@ void populate_word_stats(T& stats,
 
   // process the rest of the buffer
   if(buffer_pos > 0) {
-    process_word_buffer<T>(stats, buffer, words, buffer_pos, window_size);
+    process_word_buffer<T>(stats, word_frequencies, buffer, words, buffer_pos, window_size);
   }
 
   std::cerr << "Read " << lineno << " lines in total." << std::endl;

@@ -1,10 +1,23 @@
-#pragma once 
+#pragma once
 
 #include <vector>
 #include <numeric>
 #include <algorithm>
 #include <cmath>
 #include <Eigen/Dense>
+
+
+// https://gist.github.com/gokhansolak/d2abaefcf3e3b767f5bc7d81cfe0b36a
+// method for calculating the pseudo-Inverse as recommended by Eigen developers
+template<typename _Matrix_Type_>
+_Matrix_Type_ pseudoInverse(
+    const _Matrix_Type_ &a,
+    double epsilon = std::numeric_limits<double>::epsilon()) {
+  Eigen::JacobiSVD< _Matrix_Type_ > svd(a ,Eigen::ComputeThinU | Eigen::ComputeThinV);
+  double tolerance = epsilon * std::max(a.cols(), a.rows()) *svd.singularValues().array().abs()(0);
+  return svd.matrixV() *  (svd.singularValues().array().abs() > tolerance).select(svd.singularValues().array().inverse(), 0).matrix().asDiagonal() * svd.matrixU().adjoint();
+}
+
 
 // template <typename Iter>
 // std::iterator_traits<Iter>::value_type log_sum_exp(Iter begin, Iter end) {

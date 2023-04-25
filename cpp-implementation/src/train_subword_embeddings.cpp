@@ -34,6 +34,8 @@ struct opt {
   std::string segmentations_prefix = "segmentations.";
   std::string embeddings_prefix = "subword_embeddings.";
   std::string subwords_prefix = "subwords.";
+  std::string unigrams_prefix = "unigram_stats.";
+  std::string bigrams_prefix = "bigram_stats.";
 
   int fasttext_dim = 200;
   int window_size = 3;
@@ -59,7 +61,6 @@ void get_options(CLI::App& app) {
   app.add_option(
       "--fastext-output-pseudoinverse", opt.fasttext_output_pseudoinverse,
       "Pseudo-inverse of the fasttext output matrix")
-      ->required()
       ->check(CLI::ExistingFile);
 
   app.add_option(
@@ -115,20 +116,21 @@ void word_subword_cooccurrences(
 
 void sparse_cooccurrences(
     std::vector<std::unordered_map<int, int>>& sparse_c_v,
+    std::vector<int>& word_frequencies,
     const Embeddings& word_vocab,
     const std::string& train_data,
-    int window_size) {
-
+    int window_size,
+    bool compute_pseudoinverse_w,
+    Eigen::MatrixXf& pinv) {
 
   CooccurrenceMatrix c_v(word_vocab.size(), word_vocab.size());
 
   // --> this thing takes too long after traverse through data
   populate_word_stats<CooccurrenceMatrix>(
-      c_v, word_vocab, train_data, window_size);
+      c_v, word_frequencies, word_vocab, train_data, window_size);
 
   std::cerr << "Done, here are some stats:" << std::endl;
   std::cerr << c_v.topLeftCorner<5,5>() << std::endl;
-
 
   std::cerr << "Converting to sparse structure" << std::endl;
 
@@ -143,7 +145,27 @@ void sparse_cooccurrences(
     }
 
 #pragma omp critical
-    sparse_c_v[i] = std::unordered_map<int, int>(row_pairs.begin(), row_pairs.end());
+    sparse_c_v[i] = std::unordered_map<int, int>(
+        row_pairs.begin(), row_pairs.end());
+  }
+
+  if(compute_pseudoinverse_w) {
+    std::cerr << "Computing pseudoinverse of W from embeddings and word counts"
+              << std::endl;
+    // c_v dim: [V,V]
+
+    // smooth:
+    c_v.array() += 0.00001f;
+    // smooth, log & norm:
+    Eigen::VectorXf sums = c_v.rowwise().sum();
+    Eigen::MatrixXf normed = c_v.array().log().matrix().colwise()
+                             - sums.array().log().matrix();
+
+    // exact inverse (still the same dim)
+    normed = normed.inverse();
+
+    // matmul with embeddings (emb dim [V,E], product dim [V,E])
+    pinv = normed * word_vocab.emb;
   }
 
 }
@@ -177,36 +199,44 @@ int main(int argc, char* argv[]) {
   Embeddings word_vocab(opt.embeddings_file);
   int word_count = word_vocab.size();
 
+  Eigen::MatrixXf pinv(word_count, opt.fasttext_dim);
   std::cerr << "Populating word cooccurrence stats (" << word_count
             << " words)" << std::endl;
   std::vector<std::unordered_map<int, int>> sparse_c_v(word_count);
-  sparse_cooccurrences(sparse_c_v, word_vocab, opt.train_data, opt.window_size);
+  std::vector<int> word_frequencies(word_count);
+  sparse_cooccurrences(
+      sparse_c_v, word_frequencies, word_vocab, opt.train_data,
+      opt.window_size, opt.fasttext_output_pseudoinverse.empty(), pinv);
   std::cerr << sparse_c_v[10].size() << std::endl;
 
-  std::cerr << "Loading list of allowed substrings from " << opt.allowed_substrings << std::endl;
+  if(!opt.fasttext_output_pseudoinverse.empty()) {
+    std::cerr << "Loading pseudo-inverse of fasttext output matrix from "
+              << opt.fasttext_output_pseudoinverse << std::endl;
+    std::ifstream fasttext_fh(opt.fasttext_output_pseudoinverse);
+
+    int lineno = 0;
+    for(std::string line; std::getline(fasttext_fh, line); ++lineno) {
+      std::stringstream linestream(line);
+
+      for(int j = 0; j < word_count; ++j) {
+        linestream >> pinv(j, lineno);
+      }
+    }
+    std::cerr << "Pseudo-inverse dim: " << pinv.rows() << " x " << pinv.cols()
+              << std::endl;
+  }
+
+  std::cerr << "Loading list of allowed substrings from "
+            << opt.allowed_substrings << std::endl;
+
   AllowedSubstringMap a_sub;
   InverseAllowedSubstringMap a_sub_inv;
   load_allowed_substrings(a_sub, a_sub_inv, opt.allowed_substrings);
 
   std::cerr << "Loading subword vocab." << std::endl;
   Vocab subword_vocab(std::views::keys(a_sub_inv), true);
-  std::cerr << "Initial subword vocab size: " << subword_vocab.size() << std::endl;
-
-  std::cerr << "Loading pseudo-inverse of fasttext output matrix from " << opt.fasttext_output_pseudoinverse << std::endl;
-  std::ifstream fasttext_fh(opt.fasttext_output_pseudoinverse);
-  Eigen::MatrixXf pinv(word_count, opt.fasttext_dim);
-
-  int i = 0;
-  for(std::string line; std::getline(fasttext_fh, line); ++i) {
-    std::stringstream linestream(line);
-
-    for(int j = 0; j < word_count; ++j) {
-      linestream >> pinv(j, i);
-    }
-  }
-
-  std::cerr << pinv.block(0,0,5,5) << std::endl;
-  std::cerr << "Pseudo-inverse dim: " << pinv.rows() << " x " << pinv.cols() << std::endl;
+  std::cerr << "Initial subword vocab size: " << subword_vocab.size()
+            << std::endl;
 
   // ====== here the algorithm begins
   for(int epoch = 0; epoch < opt.epochs; ++epoch) {
@@ -237,9 +267,13 @@ int main(int argc, char* argv[]) {
 
     // připravit novou matici A pomocí for cyklu níže:
     std::vector<std::string> segmented_vocab(word_count);
+    std::vector<int> unigram_freqs(subword_vocab.size());
+    std::vector<std::unordered_map<std::string, int>> bigram_freqs(subword_vocab.size());
+
 #pragma omp parallel for
-    for(i = 0; i < word_count; ++i) {
+    for(int i = 0; i < word_count; ++i) {
       std::string word = word_vocab[i];
+      int w_freq = word_frequencies[i];
       std::vector<std::string> segm;
 
       viterbi_decode(segm, word_vocab, subword_vocab, subword_embeddings, word);
@@ -248,6 +282,7 @@ int main(int argc, char* argv[]) {
 
       std::string sep = "";
       std::ostringstream oss;
+      int prev_sub_index = -1;
 
       for(auto it = segm.begin(); it != segm.end(); ++it) {
         std::string subword = *it;
@@ -256,6 +291,17 @@ int main(int argc, char* argv[]) {
 
 #pragma omp critical
         {
+          int index = subword_vocab[subword];
+          unigram_freqs[index] += w_freq;
+
+          if(prev_sub_index != -1) {
+            if(bigram_freqs[prev_sub_index].count(subword) == 0)
+              bigram_freqs[prev_sub_index].insert({subword, 0});
+            bigram_freqs[prev_sub_index].at(subword) += w_freq;
+          }
+
+          prev_sub_index = index;
+
           if(a_sub_inv_next.count(subword) == 0)
             a_sub_inv_next.insert({subword, std::vector<std::pair<std::string, float>>{word_pair}});
           else
@@ -269,6 +315,27 @@ int main(int argc, char* argv[]) {
     std::string segmentations_path = opt.segmentations_prefix + std::to_string(epoch);
     std::cerr << "Saving segmentations to " << segmentations_path << std::endl;
     save_strings(segmentations_path, segmented_vocab);
+
+    // save unigram and bigram stats
+    std::string unigrams_path = opt.unigrams_prefix + std::to_string(epoch);
+    std::string bigrams_path = opt.bigrams_prefix + std::to_string(epoch);
+    std::ofstream uniofs(unigrams_path);
+    std::ofstream biofs(bigrams_path);
+
+    for(int i = 0; i < subword_vocab.size(); ++i) {
+      std::string unigram = subword_vocab[i];
+      uniofs << unigram << "\t" << unigram_freqs[i] << std::endl;
+
+      for(auto pair : bigram_freqs[i]) {
+        biofs << unigram << "\t" << pair.first << "\t" << pair.second << std::endl;
+      }
+    }
+
+    uniofs.close();
+    biofs.close();
+
+
+
 
     // create new subword vocabulary -> filter subwords which are not used in
     // any segmentation
