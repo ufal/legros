@@ -6,6 +6,9 @@
 #include <ranges>
 #include <Eigen/Dense>
 
+const std::string bow = "<w>";
+const std::string eow = "</w>";
+
 void get_word_to_index(
     std::unordered_map<std::string,int> &word_to_index,
     const std::string filename);
@@ -28,7 +31,14 @@ class Vocab {
   Vocab(const std::string& filename);
 
   Vocab(std::ranges::input_range auto&& words, bool unused_hack) {
-    int i = 0;
+
+    index_to_word.push_back(bow);
+    index_to_word.push_back(eow);
+
+    word_to_index.insert({bow, 0});
+    word_to_index.insert({eow, 1});
+
+    int i = 2;
     for(std::string w: words) {
       index_to_word.push_back(w);
       word_to_index.insert({w, i});

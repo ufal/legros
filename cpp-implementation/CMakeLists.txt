@@ -54,6 +54,7 @@ add_executable(test_unigram_model
 
 
 target_link_libraries (subword_embeddings Eigen3::Eigen)
+target_link_libraries (bigram_segment Eigen3::Eigen)
 target_link_libraries (train_subword_embeddings Eigen3::Eigen)
 target_link_libraries (word_cooccurrence_matrix Eigen3::Eigen)
 target_link_libraries (forward_backward Eigen3::Eigen)

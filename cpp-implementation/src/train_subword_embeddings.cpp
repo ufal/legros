@@ -282,7 +282,8 @@ int main(int argc, char* argv[]) {
 
       std::string sep = "";
       std::ostringstream oss;
-      int prev_sub_index = -1;
+      int prev_sub_index = subword_vocab[bow];
+      unigram_freqs[prev_sub_index] += w_freq;
 
       for(auto it = segm.begin(); it != segm.end(); ++it) {
         std::string subword = *it;
@@ -294,12 +295,9 @@ int main(int argc, char* argv[]) {
           int index = subword_vocab[subword];
           unigram_freqs[index] += w_freq;
 
-          if(prev_sub_index != -1) {
-            if(bigram_freqs[prev_sub_index].count(subword) == 0)
-              bigram_freqs[prev_sub_index].insert({subword, 0});
-            bigram_freqs[prev_sub_index].at(subword) += w_freq;
-          }
-
+          if(bigram_freqs[prev_sub_index].count(subword) == 0)
+            bigram_freqs[prev_sub_index].insert({subword, 0});
+          bigram_freqs[prev_sub_index].at(subword) += w_freq;
           prev_sub_index = index;
 
           if(a_sub_inv_next.count(subword) == 0)
@@ -333,8 +331,6 @@ int main(int argc, char* argv[]) {
 
     uniofs.close();
     biofs.close();
-
-
 
 
     // create new subword vocabulary -> filter subwords which are not used in
