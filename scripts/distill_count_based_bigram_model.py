@@ -10,7 +10,7 @@ from typing import Dict, List, Tuple
 import sys
 
 from gensim.models.fasttext import FastText
-from gensim.models import Word2Vec
+from gensim.models import Word2Vec, KeyedVectors
 import numpy as np
 from scipy.spatial import distance
 
@@ -24,19 +24,23 @@ SUBSTR_CACHE = {}
 
 def segment(
         word: str,
-        fasttext: FastText,
+        fasttext: KeyedVectors,
         subwrd2idx: Dict[str, int],
-        subword_embeddings: np.array) -> List[Tuple[List[str], float]]:
+        subword_embeddings: np.array,
+        is_bert_wordpiece: bool = False) -> List[Tuple[List[str], float]]:
     try:
-        vector = fasttext.wv[word]
+        vector = fasttext[word]
     except KeyError:
-        vector = fasttext.wv.vectors.mean(0)
-    subwords = get_substrings(word, subwrd2idx)
+        vector = fasttext.vectors.mean(0)
+    subwords = get_substrings(
+        word, subwrd2idx, is_bert_wordpiece=is_bert_wordpiece)
     subword_scores = {
         swrd: -distance.cosine(vector, subword_embeddings[idx])
         for swrd, idx in subwords}
 
-    seg, _ = viterbi_segment(word, subword_scores, sample=False)
+    seg, _ = viterbi_segment(
+        word, subword_scores, sample=False,
+        is_bert_wordpiece=is_bert_wordpiece)
     return seg
 
 
@@ -55,14 +59,22 @@ def main():
     parser.add_argument(
         "output", type=str, help="Output table.")
     parser.add_argument(
-        "--embeddings-type", default="fasttext", choices=["fasttext", "w2v"])
+        "--embeddings-type", default="fasttext",
+        choices=["fasttext", "w2v", "txt"])
+    parser.add_argument(
+        "--bert-wordpiece", default=False, action="store_true",
+        help="Flag is the model uses BERT-like wordpiece.")
     args = parser.parse_args()
 
     logging.info("Load word embeddings model from %s.", args.fasttext)
     if args.embeddings_type == "fasttext":
-        fasttext = FastText.load(args.fasttext)
+        fasttext = FastText.load(args.fasttext).wv
+    elif args.embeddings_type == "w2v":
+        fasttext = Word2Vec.load(args.fasttext).wv
+    elif args.embeddings_type == "txt":
+        fasttext = KeyedVectors.load_word2vec_format(args.fasttext)
     else:
-        fasttext = Word2Vec.load(args.fasttext)
+        raise ValueError("Unknown embeddings type: %s" % args.embeddings_type)
 
     logging.info(
         "Load subword vocabulary from %s.", args.subword_vocab)
@@ -84,14 +96,16 @@ def main():
 
     counts = defaultdict(lambda: defaultdict(int))
     logging.info("Compute bigram stats.")
-    for line in args.input:
+    for i, line in enumerate(args.input):
         word, count_str = line.strip().split("\t")
         segmentation = ["###"] + segment(
             word, fasttext, subwrd2idx,
-            subword_embeddings) + ["###"]
+            subword_embeddings, is_bert_wordpiece=args.bert_wordpiece) + ["###"]
 
         for seg1, seg2 in zip(segmentation, segmentation[1:]):
             counts[seg1][seg2] += int(count_str)
+        if i % 10000 == 0:
+            logging.info("Processed %d lines.", i)
     args.input.close()
 
     logging.info("Normalize counts.")
