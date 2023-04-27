@@ -9,6 +9,7 @@ from scipy.special import logsumexp
 def viterbi_segment(
         word: str, vocab: Dict[str, float],
         inference_mode: str = "sum",
+        is_bert_wordpiece: bool = False,
         sample: bool = False) -> List[str]:
 
     if inference_mode not in ["sum", "maxmin"]:
@@ -29,6 +30,8 @@ def viterbi_segment(
         indices = []
         for j in range(i):
             subword_candidate = word[j:i]
+            if is_bert_wordpiece and j > 0:
+                subword_candidate = "##" + subword_candidate
             if subword_candidate in vocab:
                 if inference_mode == "sum":
                     new_cost = costs[j] + vocab[subword_candidate]
@@ -60,7 +63,11 @@ def viterbi_segment(
         new_idx = prev[idx]
         #if new_idx == 0:
         #    break
-        subwords.append(word[new_idx:idx + 1])
+        sbwrd = word[new_idx:idx + 1]
+        if is_bert_wordpiece and new_idx > 0:
+            sbwrd = "##" + sbwrd
+        subwords.append(sbwrd)
+
         idx = new_idx - 1
     return list(reversed(subwords)), costs[-1]
 
@@ -75,13 +82,15 @@ def forward_costs(
             subword_candidate = word[j:i]
 
             if subword_candidate in vocab:
-                assert vocab[subword_candidate] < 0, "vocab should contain log probs"
+                assert vocab[subword_candidate] <= 0, "vocab should contain log probs"
                 new_cost = costs[j] + vocab[subword_candidate]
                 scores.append(new_cost)
 
         if not scores:
-            raise ValueError(f"No scores returned, no subwords of {word} in vocab - double check!")
-        costs[i] = logsumexp(scores)
+            #raise ValueError(f"No scores returned, no subwords of {word} in vocab - double check!")
+            costs[i] = -1000
+        else:
+            costs[i] = logsumexp(scores)
 
     return costs
 
@@ -96,14 +105,15 @@ def backward_costs(word, vocab):
             subword_candidate = word[begin:end]
 
             if subword_candidate in vocab:
-                assert vocab[subword_candidate] < 0, "vocab should contain log probs"
+                assert vocab[subword_candidate] <= 0, "vocab should contain log probs"
                 new_cost = costs[end] + vocab[subword_candidate]
                 scores.append(new_cost)
 
         if not scores:
-            raise ValueError(f"No scores returned, no subwords of {word} in vocab - double check!")
-
-        costs[begin] = logsumexp(scores)
+            #raise ValueError(f"No scores returned, no subwords of {word} in vocab - double check!")
+            costs[begin] = -1000
+        else:
+            costs[begin] = logsumexp(scores)
     return costs
 
 
@@ -127,6 +137,9 @@ def expected_counts(word, vocab):
                 exp_counts[subword] = score
             else:
                 exp_counts[subword] = logsumexp([exp_counts[subword], score])
+
+    if not exp_counts:
+        return {}
 
     lse = logsumexp(list(exp_counts.values()))
     return {e: val - lse for e, val in exp_counts.items()}

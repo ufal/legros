@@ -11,13 +11,19 @@ class Model:
             self,
             vocab: Vocab,
             estimator: Callable[[Any], float],
-            sample_temperature: float = 1.0) -> None:
+            sample_temperature: float = 1.0,
+            is_bert_wordpiece: bool = False) -> None:
         self.vocab = vocab
         self.estimator = estimator
         self.temperature = sample_temperature
+        self.is_bert_wordpiece = is_bert_wordpiece
+
+        self._cache = {}
 
     def segment(self, token: str, sample: bool = False) -> List[str]:
         assert token
+        if token in self._cache:
+            return self._cache[token]
 
         score_table = np.full([len(token), len(token)], -np.inf)
         prev_rows = np.full([len(token), len(token)], -1, dtype=np.int32)
@@ -28,6 +34,8 @@ class Model:
             for col in range(row, max_column):
 
                 subword = token[row:col + 1]
+                if self.is_bert_wordpiece and row > 0:
+                    subword = "##" + subword
 
                 if subword not in self.vocab:
                     #if len(subword) == 1:
@@ -80,12 +88,17 @@ class Model:
 
         while subword_end > 0:
             subword_begin = row
-            segmentation.append(token[subword_begin:subword_end])
+            subword = token[subword_begin:subword_end]
+            if self.is_bert_wordpiece and subword_begin > 0:
+                subword = "##" + subword
+            segmentation.append(subword)
 
             row = prev_rows[row, subword_end - 1]
             subword_end = subword_begin
 
-        return list(reversed(segmentation))
+        tokenization = list(reversed(segmentation))
+        self._cache[token] = tokenization
+        return tokenization
 
     def extract_bigrams(self, tokens):
         bigrams = []

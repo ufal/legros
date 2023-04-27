@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#i!/usr/bin/env python3
 
 import argparse
 import logging
@@ -7,9 +7,10 @@ from typing import Dict, List, Tuple, Union
 import sys
 
 from gensim.models.fasttext import FastText
-from gensim.models import Word2Vec
+from gensim.models import Word2Vec, KeyedVectors
 import numpy as np
 from scipy.spatial import distance
+from scipy.special import logsumexp
 
 from neuralpiece.unigram_segment import viterbi_segment, expected_counts
 
@@ -20,11 +21,14 @@ def get_substrings(
         word: str,
         subwrd2idx: Dict[str, int],
         max_len: int = 10,
+        is_bert_wordpiece: bool = False,
         exclude_subwords: List[str] = None) -> List[Tuple[str, int]]:
     substrings = []
     for sub_len in range(1, min(len(word), max_len) + 1):
         for i in range(0, len(word) - sub_len + 1):
             substr = word[i:i + sub_len]
+            if is_bert_wordpiece and i > 0:
+                substr = "##" + substr
             if (substr in subwrd2idx and
                 (exclude_subwords is None or substr not in exclude_subwords)):
                 substrings.append((substr, subwrd2idx[substr]))
@@ -38,37 +42,44 @@ def try_segment(
         subword_embeddings: np.array,
         inference_mode: str = "sum",
         sample: bool = False,
+        is_bert_wordpiece: bool = False,
         exclude_subwords: List[str] = None) -> List[Tuple[List[str], float]]:
     if isinstance(fasttext, np.ndarray):
         vector = fasttext
     else:
         try:
-            vector = fasttext.wv[word]
+            vector = fasttext[word]
         except KeyError:
-            vector = fasttext.wv.vectors.mean(0)
+            vector = fasttext.vectors.mean(0)
     subwords = get_substrings(
-        word, subwrd2idx, exclude_subwords=exclude_subwords)
+        word, subwrd2idx, exclude_subwords=exclude_subwords,
+        is_bert_wordpiece=is_bert_wordpiece)
     subword_scores = {
-            #swrd: -distance.cosine(vector, subword_embeddings[idx]) #+ 1e-9
-        swrd: 2 - distance.cosine(vector, subword_embeddings[idx]) #+ 1e-9
+            swrd: -distance.cosine(vector, subword_embeddings[idx]) #+ 1e-9
+            #swrd: 2 - distance.cosine(vector, subword_embeddings[idx]) #+ 1e-9
+            #swrd: np.dot(vector, subword_embeddings[idx])
         for swrd, idx in subwords}
-    if subword_scores:
-        denominator = math.log(sum(subword_scores.values()))
-        subword_scores = {
-            swrd: math.log(val) - denominator
-            for swrd, val in subword_scores.items()
-    }
+    #if subword_scores:
+    #    #denominator = math.log(sum(subword_scores.values()))
+    #    denominator = logsumexp(list(subword_scores.values()))
+    #    subword_scores = {
+    #        #swrd: math.log(val) - denominator
+    #        swrd: val - denominator
+    #        for swrd, val in subword_scores.items()
+    #    }
 
     def seg():
         seg, score = viterbi_segment(
-            word, subword_scores, inference_mode=inference_mode, sample=True)
+            word, subword_scores, inference_mode=inference_mode,
+            sample=True, is_bert_wordpiece=is_bert_wordpiece)
         return " ".join(seg), -score
 
     if sample:
         return list(sorted({seg() for _ in range(10)}, key=lambda x: x[1]))
 
     seg, score = viterbi_segment(
-        word, subword_scores, inference_mode=inference_mode, sample=False)
+        word, subword_scores, inference_mode=inference_mode,
+        sample=False, is_bert_wordpiece=is_bert_wordpiece)
     return [(" ".join(seg), -score)]
 
 
@@ -82,21 +93,24 @@ def expected_counts_segment(
         vector = fasttext
     else:
         try:
-            vector = fasttext.wv[word]
+            vector = fasttext[word]
         except KeyError:
-            vector = fasttext.wv.vectors.mean(0)
+            vector = fasttext.vectors.mean(0)
     subwords = get_substrings(
         word, subwrd2idx, exclude_subwords=exclude_subwords)
     subword_scores = {
             #swrd: -distance.cosine(vector, subword_embeddings[idx]) #+ 1e-9
-        swrd: 2 - distance.cosine(vector, subword_embeddings[idx]) #+ 1e-9
+            #swrd: 2 - distance.cosine(vector, subword_embeddings[idx]) #+ 1e-9
+        swrd: np.dot(vector, subword_embeddings[idx])
         for swrd, idx in subwords}
     if subword_scores:
-        denominator = math.log(sum(subword_scores.values()))
+        #denominator = math.log(sum(subword_scores.values()))
+        denominator = logsumexp(list(subword_scores.values()))
         subword_scores = {
-            swrd: math.log(val) - denominator
+            #swrd: math.log(val) - denominator
+            swrd: val - denominator
             for swrd, val in subword_scores.items()
-    }
+        }
 
     counts = expected_counts(word, subword_scores)
     counts_list = [(swrd, math.exp(x)) for swrd, x in counts.items()]
@@ -124,7 +138,7 @@ def main():
         help="Limit subword vocabulary to N items.")
     parser.add_argument(
         "--embeddings-type", default="fasttext",
-        choices=["fasttext", "w2v"])
+        choices=["fasttext", "w2v", "txt"])
     parser.add_argument(
         "--inference-mode", default="sum", choices=["sum", "maxmin"])
     parser.add_argument(
@@ -134,13 +148,21 @@ def main():
         "--excluded", default=None, type=argparse.FileType("r"),
         help="File with a list of forbidden subwords.",
         required=False)
+    parser.add_argument(
+        "--bert-wordpiece", default=False, action="store_true",
+        help="Set for tokenizer based BER's WordPiece.",
+        required=False)
     args = parser.parse_args()
 
     logging.info("Load word embeddings model from %s.", args.fasttext)
     if args.embeddings_type == "fasttext":
-        fasttext = FastText.load(args.fasttext)
+        fasttext = FastText.load(args.fasttext).wv
+    elif args.embeddings_type == "w2v":
+        fasttext = Word2Vec.load(args.fasttext).wv
+    elif args.embeddings_type == "txt":
+        fasttext = KeyedVectors.load_word2vec_format(args.fasttext)
     else:
-        fasttext = Word2Vec.load(args.fasttext)
+        raise ValueError("Unknown embeddings type: %s" % args.embeddings_type)
 
     logging.info(
         "Load subword vocabulary from %s.", args.subword_vocab)
@@ -184,6 +206,7 @@ def main():
                 subword_embeddings,
                 inference_mode=args.inference_mode,
                 sample=args.sample,
+                is_bert_wordpiece=args.bert_wordpiece,
                 exclude_subwords=exclude_subwords)
 
             if args.sample:

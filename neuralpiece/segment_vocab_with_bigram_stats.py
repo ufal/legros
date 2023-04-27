@@ -27,6 +27,9 @@ def main():
     parser.add_argument(
         "input", nargs="?", default=sys.stdin, type=argparse.FileType("r"),
         help="Input words to segment: word per line.")
+    parser.add_argument(
+        "--bert-wordpiece", default=False, action="store_true",
+        help="Flag is the model uses BERT-like wordpiece.")
     parser.add_argument("--model-type", choices=["counts", "neural"], default="counts")
     args = parser.parse_args()
 
@@ -44,7 +47,10 @@ def main():
     else:
         raise ValueError("Unknown model type.")
 
-    model = Model(vocab=vocab, estimator=estimator)
+    model = Model(
+        vocab=vocab,
+        estimator=estimator,
+        is_bert_wordpiece=args.bert_wordpiece)
 
     logging.info("Segment words.")
     for line in args.input:
