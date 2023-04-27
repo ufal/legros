@@ -18,7 +18,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 set(CMAKE_CXX_FLAGS_RELEASE "-Ofast")
 
-find_package (Eigen3 3.4 REQUIRED NO_MODULE)
+add_subdirectory(3rd_party/eigen)
 
 add_executable(bigram_segment
   src/bigram_segment.cpp)
