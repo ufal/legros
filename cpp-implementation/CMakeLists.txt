@@ -20,8 +20,15 @@ set(CMAKE_CXX_FLAGS_RELEASE "-Ofast")
 
 add_subdirectory(3rd_party/eigen)
 
+add_executable(brown_classes
+  src/brown_classes_main.cpp
+  src/brown_classes.cpp
+  src/counters.cpp)
+
 add_executable(bigram_segment
-  src/bigram_segment.cpp)
+  src/bigram_segment.cpp
+  src/counters.cpp
+  src/vocabs.cpp)
 
 add_executable(train_subword_embeddings
   src/train_subword_embeddings.cpp
