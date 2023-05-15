@@ -116,13 +116,17 @@ double brown_classes::merge_loss_cached(
 void brown_classes::initialize_loss_table() {
   loss_table.clear();
 
+#pragma omp parallel for
   for(auto it1 = classes.cbegin(); it1 != classes.cend(); it1++) {
     const auto& cls1 = (*it1)[0];
 
     for(auto it2 = classes.cbegin(); it2 < it1; it2++) {
       const auto& cls2 = (*it2)[0];
 
-      loss_table[cls1][cls2] = merge_loss_manual(cls1, cls2);
+      double loss = merge_loss_manual(cls1, cls2);
+
+#pragma omp critical
+      loss_table[cls1][cls2] = loss;
     }
   }
 }
@@ -256,14 +260,6 @@ double brown_classes::mutual_information() {
       sum += mutual_information_terms[left][right];
     }
   }
-  // for(const auto& map: mutual_information_terms | std::views::values) {
-  //   auto v = map | std::views::values | std::views::common;
-  //   // for(const auto &[k, v] : map) {
-  //   //   sum += v;
-  //   // }
-  //   sum += std::accumulate(v.begin(), v.end(), 0.0d);
-  // }
-
   return sum;
 }
 
@@ -277,9 +273,6 @@ void brown_classes::compute_mutual_information_terms() {
 
       double mi = freq / T() * std::log2(freq * T() / (lf * rf));
       mutual_information_terms[left][right] = mi;
-
-      if(mi > 1000)
-        std::cerr << left << right << freq << std::endl;
     }
   }
 }
