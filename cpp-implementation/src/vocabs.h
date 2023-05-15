@@ -15,8 +15,6 @@ void get_word_to_index(
 
 
 class Vocab {
- protected:
-  Vocab() {}
 
  public:
   std::unordered_map<std::string, int> word_to_index;
@@ -28,22 +26,25 @@ class Vocab {
   int operator[](const std::string& word) const { return word_to_index.at(word); }
   const std::string& operator[](int index) const { return index_to_word[index]; }
 
+  void insert(std::ranges::input_range auto&& words) {
+    int i = index_to_word.size();
+    for(std::string w: words) {
+      index_to_word.push_back(w);
+      word_to_index.insert({w, i});
+      i++;
+    }
+  }
+
+  Vocab() {}
   Vocab(const std::string& filename);
-
   Vocab(std::ranges::input_range auto&& words, bool unused_hack) {
-
     index_to_word.push_back(bow);
     index_to_word.push_back(eow);
 
     word_to_index.insert({bow, 0});
     word_to_index.insert({eow, 1});
 
-    int i = 2;
-    for(std::string w: words) {
-      index_to_word.push_back(w);
-      word_to_index.insert({w, i});
-      ++i;
-    }
+    insert(words);
   }
 
   virtual ~Vocab() {}

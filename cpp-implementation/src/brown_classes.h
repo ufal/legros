@@ -9,12 +9,11 @@
 #include "counters.h"
 
 typedef std::vector<std::vector<std::string>> class_list;
-typedef std::unordered_map<
-  std::string, std::unordered_map<std::string, float>> bigram_floats;
+typedef std::unordered_map<std::string, std::unordered_map<std::string, double>> bigram_floats;
 
 //typedef std::vector<std::pair<std::string, float>> unigram_floats_dense;
-typedef std::unordered_map<std::string, float> unigram_floats;
-typedef std::tuple<std::string, std::string, float> merge_triplet;
+typedef std::unordered_map<std::string, double> unigram_floats;
+typedef std::tuple<std::string, std::string, double> merge_triplet;
 
 template<typename K, typename V>
 inline const V& get(
@@ -27,18 +26,13 @@ inline const V& get(
 }
 
 
+
+
 class brown_classes {
 
-private:
-
-  int data_size;
-  float T;
+ private:
   int k;
-  unigram_counter counts;
-  bigram_counter bigram_counts;
-
-  unigram_counter unigram_counts_left;
-  unigram_counter unigram_counts_right;
+  brown_counter counter;
 
   class_list classes;
   std::unordered_map<std::string, int> inv_classes;
@@ -49,7 +43,7 @@ private:
 
   void compute_mutual_information_terms();
   void compute_cross_sums();
-  float merge_loss_manual(const std::string& a, const std::string& b) const;
+  double merge_loss_manual(const std::string& a, const std::string& b) const;
   void initialize_loss_table();
   void update_loss_table(const std::string& a, const std::string& b,
                          const bigram_floats& old_mis,
@@ -57,13 +51,26 @@ private:
 
 public:
   brown_classes(const std::string& path, int min_freq, int limit);
-  float mutual_information();
-  inline int size() const {return k;}
-  inline const std::vector<std::string>& get_class(int i) const {return classes[i];}
+
+  double mutual_information();
+
+  inline int size() const { return k; }
+
+  inline const std::vector<std::string>& get_class(int i) const {
+    return classes[i];
+  }
+
+  inline double T() const { return (double)counter.data_size() - 1; }
+
+  inline double mi_cached(const std::string& a, const std::string& b) const {
+    return mutual_information_terms.at(a).at(b);
+  }
 
   merge_triplet find_best_merge() const;
+
   void merge_classes(const std::string& a, const std::string& b);
-  float merge_loss_cached(const std::string& a, const std::string& b) const;
+
+  double merge_loss_cached(const std::string& a, const std::string& b) const;
 
 };
 
