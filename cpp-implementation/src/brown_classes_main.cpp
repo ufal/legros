@@ -60,16 +60,21 @@ int main(int argc, char* argv[]) {
     classes.merge_classes(std::get<0>(best_merge), std::get<1>(best_merge));
   }
 
-  std::cerr << "done, here are the resulting classes:" << std::endl;
+  std::cerr << "done, saving classes to " << opt.output_file << std::endl;
 
+  std::ofstream ofs(opt.output_file);
   for(int i = 0; i < classes.size(); i++) {
-    std::cerr << i << ":";
     auto cls = classes.get_class(i);
+    std::string sep = "";
+
     for(auto w: cls) {
-      std::cerr << " " << w;
+      ofs << sep << w;
+      sep = " ";
     }
-    std::cerr << std::endl;
+
+    ofs << std::endl;
   }
+  ofs.close();
 
   return 0;
 }
