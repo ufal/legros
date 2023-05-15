@@ -26,8 +26,6 @@ inline const V& get(
 }
 
 
-
-
 class brown_classes {
 
  private:

@@ -64,7 +64,7 @@ brown_counter::brown_counter(const std::string& path, int limit) {
       data_size_++;
     }
 
-    if(data_size_ >= limit)
+    if(limit > 0 && data_size_ >= limit)
       break;
   }
 
