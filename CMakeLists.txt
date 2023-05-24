@@ -15,10 +15,11 @@ find_library(MKL_INTEL_LP64_LIBRARY mkl_intel_lp64 PATHS /opt/intel/mkl/lib/inte
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-
 set(CMAKE_CXX_FLAGS_RELEASE "-Ofast")
 
-add_subdirectory(3rd_party/eigen)
+include_directories(src)
+include_directories(include)
+include_directories(3rd_party/eigen-3.4.0)
 
 add_executable(brown_classes
   src/brown_classes_main.cpp
@@ -60,16 +61,14 @@ add_executable(test_unigram_model
   src/unigram_model.cpp)
 
 
-target_link_libraries (subword_embeddings Eigen3::Eigen)
-target_link_libraries (brown_classes Eigen3::Eigen)
-target_link_libraries (bigram_segment Eigen3::Eigen)
-target_link_libraries (train_subword_embeddings Eigen3::Eigen)
-target_link_libraries (word_cooccurrence_matrix Eigen3::Eigen)
-target_link_libraries (forward_backward Eigen3::Eigen)
-target_link_libraries (test_unigram_model Eigen3::Eigen)
-target_link_libraries (test-eigen Eigen3::Eigen ${MKL_CORE_LIBRARY} ${MKL_INTEL_THREAD_LIBRARY} ${MKL_INTEL_LP64_LIBRARY})
+# target_link_libraries (subword_embeddings Eigen3::Eigen)
+# target_link_libraries (brown_classes Eigen3::Eigen)
+# target_link_libraries (bigram_segment Eigen3::Eigen)
+# target_link_libraries (train_subword_embeddings Eigen3::Eigen)
+# target_link_libraries (word_cooccurrence_matrix Eigen3::Eigen)
+# target_link_libraries (forward_backward Eigen3::Eigen)
+# target_link_libraries (test_unigram_model Eigen3::Eigen)
+# target_link_libraries (test-eigen Eigen3::Eigen ${MKL_CORE_LIBRARY} ${MKL_INTEL_THREAD_LIBRARY} ${MKL_INTEL_LP64_LIBRARY})
 
-include_directories(include)
-include_directories(src)
 
 add_subdirectory(src)
