@@ -14,6 +14,7 @@
 #include <string>
 #include <iostream>
 #include <ranges>
+#include <filesystem>
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -23,6 +24,8 @@
 #include "substring_stats.h"
 #include "cosine_viterbi.h"
 
+namespace fs = std::filesystem;
+
 struct opt {
   std::string embeddings_file;
   std::string allowed_substrings;
@@ -31,6 +34,7 @@ struct opt {
   std::string output;
   std::string train_data;
 
+  std::string output_directory = ".";
   std::string segmentations_prefix = "segmentations.";
   std::string embeddings_prefix = "subword_embeddings.";
   std::string subwords_prefix = "subwords.";
@@ -74,13 +78,27 @@ void get_options(CLI::App& app) {
       "--window-size", opt.window_size, "Window size.");
 
   app.add_option(
-      "--segm-prefix", opt.segmentations_prefix, "Prefix for segmentations checkpoints.");
+      "--output-directory", opt.output_directory, "Output directory.");
 
   app.add_option(
-      "--emb-prefix", opt.embeddings_prefix, "Prefix for embedding checkpoints.");
+      "--segm-prefix", opt.segmentations_prefix,
+      "Prefix for segmentations checkpoints.");
 
   app.add_option(
-      "--subw-prefix", opt.subwords_prefix, "Prefix for subword vocabularies.");
+      "--emb-prefix", opt.embeddings_prefix,
+      "Prefix for embedding checkpoints.");
+
+  app.add_option(
+      "--subw-prefix", opt.subwords_prefix,
+      "Prefix for subword vocabularies.");
+
+  app.add_option(
+      "--unigram-prefix", opt.unigrams_prefix,
+      "Prefix for unigram stats.");
+
+  app.add_option(
+      "--bigram-prefix", opt.bigrams_prefix,
+      "Prefix for bigram stats.");
 }
 
 // step 3: fill subword-word cooccurrence matrix
@@ -171,14 +189,14 @@ void sparse_cooccurrences(
 }
 
 void save_embedding_checkpoint(
-    const std::string& path,
+    const fs::path& path,
     const Eigen::MatrixXf& embeddings) {
   std::ofstream ofs(path);
   ofs << embeddings << std::endl;
   ofs.close();
 }
 
-void save_strings(const std::string& path,
+void save_strings(const fs::path& path,
                   const std::vector<std::string>& segments) {
   std::ofstream ofs(path);
   for(auto w: segments) {
@@ -238,13 +256,17 @@ int main(int argc, char* argv[]) {
   std::cerr << "Initial subword vocab size: " << subword_vocab.size()
             << std::endl;
 
+  fs::path output_dir(opt.output_directory);
+
   // ====== here the algorithm begins
   for(int epoch = 0; epoch < opt.epochs; ++epoch) {
     std::cerr << "Epoch " << epoch << " begins." << std::endl;
 
-    std::string subwords_path = opt.subwords_prefix + std::to_string(epoch);
-    std::cerr << "Saving subword vocabulary to " << subwords_path << std::endl;
-    save_strings(subwords_path, subword_vocab.index_to_word);
+    auto subw_path = output_dir / fs::path(opt.subwords_prefix
+                                           + std::to_string(epoch));
+
+    std::cerr << "Saving subword vocabulary to " << subw_path << std::endl;
+    save_strings(subw_path, subword_vocab.index_to_word);
 
     std::cerr << "Calculating word-subword cooccurrence matrix. " << std::endl;
     Eigen::MatrixXf c_sub(subword_vocab.size(), word_count); // = a_sub * c_v;
@@ -258,7 +280,8 @@ int main(int argc, char* argv[]) {
     Eigen::MatrixXf normed = c_sub.array().log().matrix().colwise() - sums.array().log().matrix();
     Eigen::MatrixXf subword_embeddings =  normed * pinv;
 
-    std::string checkpoint_path = opt.embeddings_prefix + std::to_string(epoch);
+    auto checkpoint_path = output_dir / fs::path(opt.embeddings_prefix
+                                                 + std::to_string(epoch));
     std::cerr << "Saving checkpoint to " << checkpoint_path << std::endl;
     save_embedding_checkpoint(checkpoint_path, subword_embeddings);
 
@@ -310,13 +333,19 @@ int main(int argc, char* argv[]) {
       segmented_vocab[i] = oss.str();
     } // word
 
-    std::string segmentations_path = opt.segmentations_prefix + std::to_string(epoch);
+    auto segmentations_path = output_dir / fs::path(opt.segmentations_prefix
+                                                    + std::to_string(epoch));
+
     std::cerr << "Saving segmentations to " << segmentations_path << std::endl;
     save_strings(segmentations_path, segmented_vocab);
 
     // save unigram and bigram stats
-    std::string unigrams_path = opt.unigrams_prefix + std::to_string(epoch);
-    std::string bigrams_path = opt.bigrams_prefix + std::to_string(epoch);
+    auto unigrams_path = output_dir / fs::path(opt.unigrams_prefix
+                                               + std::to_string(epoch));
+
+    auto bigrams_path = output_dir / fs::path(opt.bigrams_prefix
+                                              + std::to_string(epoch));
+
     std::ofstream uniofs(unigrams_path);
     std::ofstream biofs(bigrams_path);
 
@@ -325,7 +354,8 @@ int main(int argc, char* argv[]) {
       uniofs << unigram << "\t" << unigram_freqs[i] << std::endl;
 
       for(auto pair : bigram_freqs[i]) {
-        biofs << unigram << "\t" << pair.first << "\t" << pair.second << std::endl;
+        biofs << unigram << "\t" << pair.first << "\t" << pair.second
+              << std::endl;
       }
     }
 
