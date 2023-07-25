@@ -211,6 +211,12 @@ int main(int argc, char* argv[]) {
   get_options(app);
   CLI11_PARSE(app, argc, argv);
 
+  #ifndef SSEG_RELEASE_BUILD
+  std::cerr
+      << "\n\033[31m!! WARNING !!\033[0m You are likely running a debug build"
+      << "\nFor best results, use cmake with -DCMAKE_BUILD_TYPE=Release\n\n";
+  #endif
+
   // compute word cooccurrence matrix for data C_v (dim. V x V)
   // implemented in word_cooccurrence_matrix.cpp
   std::cerr << "Loading word embeddings: " << opt.embeddings_file << std::endl;

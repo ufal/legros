@@ -17,6 +17,14 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_FLAGS_RELEASE "-Ofast")
 
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build (Debug or Release)" FORCE)
+endif()
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  add_definitions(-DSSEG_RELEASE_BUILD)
+endif()
+
 include_directories(src)
 include_directories(include)
 include_directories(3rd_party/eigen-3.4.0)
