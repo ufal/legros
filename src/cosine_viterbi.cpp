@@ -103,7 +103,7 @@ void viterbi_decode(
       }
     }
 
-    assert(sw_best_pred.size() == 0);
+    assert(sw_best_pred.size() > 0);
     predecesors[i - 1] = best_pred; // these are off by one because first has
                                     // no pred but has score
     sw_predecesors[i - 1] = sw_best_pred;
