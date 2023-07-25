@@ -14,10 +14,10 @@
 #include <unordered_map>
 #include "CLI11.hpp"
 #include "vocabs.h"
+#include "counters.h"
 
-typedef std::unordered_map<std::string, int> unigram_table;
-typedef std::unordered_map<std::string,
-                           std::unordered_map<std::string, int>> bigram_table;
+#define BUFFER_SIZE 10000
+
 typedef std::vector<std::vector<float>> matrix;
 
 const std::string sub_sep = "@@ ";
@@ -25,6 +25,7 @@ const std::string sub_sep = "@@ ";
 struct opt {
   std::string bigram_stats;
   std::string unigram_stats;
+  int num_threads = 1;
 
 } opt;
 
@@ -38,40 +39,10 @@ void get_options(CLI::App& app) {
       "unigram_stats", opt.unigram_stats, "Unigram statistics.")
       ->required()
       ->check(CLI::ExistingFile);
-}
 
-
-int load_unigrams(unigram_table& unigram_frequencies,
-                  const std::string& path) {
-  int total_count = 0;
-  std::ifstream ifs(path);
-  for(std::string line; std::getline(ifs, line);) {
-    std::istringstream iss(line);
-    std::string subword;
-    iss >> subword;
-    int frequency;
-    iss >> frequency;
-    total_count += frequency;
-
-    unigram_frequencies.insert({subword, frequency});
-  }
-  return total_count;
-}
-
-void load_bigrams(bigram_table& bigram_frequencies,
-                  const std::string& path) {
-
-  std::ifstream ifs(path);
-  for(std::string line; std::getline(ifs, line);) {
-    std::istringstream iss(line);
-    std::string subword1, subword2;
-    iss >> subword1;
-    iss >> subword2;
-    int frequency;
-    iss >> frequency;
-
-    bigram_frequencies[subword1][subword2] = frequency;
-  }
+  app.add_option(
+      "num_threads", opt.num_threads, "Number of threads to use.")
+      ->required();
 }
 
 int score_table_column_argmax(const std::vector<std::vector<float>>& table,
@@ -122,8 +93,8 @@ int argmax(const std::vector<T>& array) {
 
 float score_bigram(const std::string& subword,
                    const std::string& prev,
-                   unigram_table& unigrams,
-                   bigram_table& bigrams,
+                   const unigram_counter& unigrams,
+                   const bigram_counter_n& bigrams,
                    int unigram_count) {
 
   // in case everything is OOV, return log uniform prob
@@ -132,17 +103,22 @@ float score_bigram(const std::string& subword,
 
   // for prev OOVs, return log unigram prob
   if(unigrams.count(prev) == 0)
-    return std::log((float)unigrams[subword] / (float)unigram_count);
+    return std::log((float)unigrams.at(subword) / (float)unigram_count);
 
-  // for subword OOVs, use trivial add-one smoothing
-  return std::log((float)(bigrams[prev][subword] + 1) / (float)unigrams[prev]);
+  // for bigram OOVs, use trivial add-one smoothing
+  if(bigrams.count(prev) == 0 || bigrams.at(prev).count(subword) == 0)
+    return -std::log(unigrams.at(prev));
+
+  // if everything is known, return the smoothed logprob
+  return std::log((float)(bigrams.at(prev).at(subword) + 1)
+                  / (float)unigrams.at(prev));
 }
 
 
 void segment_token(std::vector<std::string>& segmentation,
                    const std::string& token,
-                   unigram_table& unigrams,
-                   bigram_table& bigrams,
+                   const unigram_counter& unigrams,
+                   const bigram_counter_n& bigrams,
                    int unigram_count,
                    int max_subword_length) {
 
@@ -225,19 +201,57 @@ void segment_token(std::vector<std::string>& segmentation,
 }
 
 
+void segment_buffer(
+    const std::vector<std::string> &buffer,
+    std::vector<std::string> &segmented,
+    int length,
+    const unigram_counter& unigrams,
+    const bigram_counter_n& bigrams,
+    int unigram_count,
+    int max_unigram_length) {
+  // segment tokens in the buffer
+
+  #pragma omp parallel for
+  for(int i = 0; i < length; i++) {
+    std::string line = buffer[i];
+    std::istringstream ss(line);
+    std::ostringstream segmented_line;
+
+    std::string wordsep = "";
+    for(std::string word; std::getline(ss, word, ' ');) {
+      std::vector<std::string> segm;
+
+      segmented_line << wordsep;
+      wordsep = " ";
+
+      segment_token(segm, word, unigrams, bigrams, unigram_count,
+                    max_unigram_length);
+
+      for(auto it = segm.begin(); it != segm.end() - 1; ++it)
+        segmented_line << *it << sub_sep;
+
+      segmented_line << *(segm.end() - 1);
+    }
+
+    segmented[i] = segmented_line.str();
+  }
+}
+
+
 int main(int argc, char* argv[]) {
   CLI::App app{"Bigram segment -- using subword bigram statistics for subword segmentation."};
   get_options(app);
   CLI11_PARSE(app, argc, argv);
 
-  unigram_table unigram_frequencies;
-  bigram_table bigram_frequencies;
+  unigram_counter unigram_frequencies;
+  bigram_counter_n bigram_frequencies;
 
   std::cerr << "loading bigrams and unigrams" << std::endl;
 
   // je potreba si pamatovat ze tohle neni vocab size ale data size
-  int unigram_count = load_unigrams(unigram_frequencies, opt.unigram_stats);
-  load_bigrams(bigram_frequencies, opt.bigram_stats);
+  int unigram_count = load_unigrams_from_vocab(
+      unigram_frequencies, opt.unigram_stats);
+  load_bigrams_from_vocab(bigram_frequencies, opt.bigram_stats);
 
   std::cerr << "done" << std::endl;
 
@@ -250,27 +264,34 @@ int main(int argc, char* argv[]) {
 
   std::cerr << "max unigram length: " << max_unigram_length << std::endl;
 
-  for(std::string line; std::getline(std::cin, line);) {
-    std::istringstream ss(line);
+  int lineno = 0;
+  int buffer_pos = 0;
 
-    std::string wordsep = "";
-    for(std::string word; std::getline(ss, word, ' ');) {
-      std::vector<std::string> segm;
+  std::vector<std::string> buffer(BUFFER_SIZE);
+  std::vector<std::string> segmented_buffer(BUFFER_SIZE);
 
-      std::cout << wordsep;
-      wordsep = " ";
+  while(std::getline(std::cin, buffer[buffer_pos])) {
+    lineno++;
+    buffer_pos++;
 
-      segment_token(segm, word, unigram_frequencies, bigram_frequencies,
-                    unigram_count, max_unigram_length);
+    if(buffer_pos == BUFFER_SIZE) {
+      segment_buffer(
+          buffer, segmented_buffer, buffer_pos, unigram_frequencies,
+          bigram_frequencies, unigram_count, max_unigram_length);
 
-      for(auto it = segm.begin(); it != segm.end() - 1; ++it) {
-        std::cout << *it << sub_sep;
-      }
+      for(int i = 0; i < buffer_pos; i++)
+        std::cout << segmented_buffer[i] << std::endl;
 
-      std::cout << *(segm.end() - 1);
+      buffer_pos = 0;
     }
 
-    std::cout << std::endl;
+  }
+
+  if(buffer_pos > 0) {
+    segment_buffer(buffer, segmented_buffer, buffer_pos, unigram_frequencies,
+                   bigram_frequencies, unigram_count, max_unigram_length);
+    for(int i = 0; i < buffer_pos; i++)
+      std::cout << segmented_buffer[i] << std::endl;
   }
 
   return 0;

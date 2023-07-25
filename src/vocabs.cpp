@@ -39,19 +39,48 @@ void removeRow(Eigen::MatrixXf& matrix, unsigned int rowToRemove) {
 }
 
 
+void Vocab::insert(std::ranges::input_range auto&& words) {
+  int i = index_to_word.size();
+  for(std::string w: words) {
+
+    if(word_to_index.count(w) != 0) {
+      std::cerr << "Duplicate entry in vocabulary: " << w << std::endl;
+      std::abort();
+    }
+
+    index_to_word.push_back(w);
+    word_to_index.insert({w, i});
+    i++;
+  }
+}
+
+
 Vocab::Vocab(const std::string& filename) {
   std::ifstream file(filename);
   int i = 0;
   for(std::string line; std::getline(file, line); ++i) {
-    if(word_to_index.count(line) != 0) {
-      std::cerr << "Duplicate entry in vocabulary: '"
-                << line << "' on line " << i << std::endl;
+    if(word_to_index.count(w) != 0) {
+      std::cerr << "Duplicate entry in vocabulary: " << w
+                << ", line: " << i << std::endl;
       std::abort();
     }
 
     word_to_index.insert({line, i});
     index_to_word.push_back(line);
   }
+}
+
+Vocab::Vocab(std::ranges::input_range auto&& words, bool add_bow_eow) {
+
+  if(add_bow_eow) {
+    index_to_word.push_back(bow);
+    index_to_word.push_back(eow);
+
+    word_to_index.insert({bow, 0});
+    word_to_index.insert({eow, 1});
+  }
+
+  insert(words);
 }
 
 
@@ -86,4 +115,8 @@ Embeddings::Embeddings(const std::string& filename) {
       ss >> emb(i, j);
     }
   }
+}
+
+WordClasses::WordClasses(const std::string& filename) {
+
 }
