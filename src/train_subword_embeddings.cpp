@@ -101,7 +101,10 @@ void get_options(CLI::App& app) {
       "Prefix for bigram stats.");
 }
 
-// step 3: fill subword-word cooccurrence matrix
+
+// Fills `c_sub` with word-subword cooccurrences, given word cooccurrences in
+// `sparse_c_v`. Only considers subwords present in the `a_sub_inv` map
+// (aka. allowed substrings)
 void word_subword_cooccurrences(
     Eigen::MatrixXf& c_sub,
     const Embeddings& word_vocab,
@@ -116,12 +119,11 @@ void word_subword_cooccurrences(
     if(a_sub_inv.count(subword) == 0)
       continue;
 
-    for(std::pair<std::string, float> wordscores : a_sub_inv.at(subword)) {
-
+    for(auto wordscores : a_sub_inv.at(subword)) {
       if(!word_vocab.contains(wordscores.first))
         continue;
 
-      for(std::pair<int, int> cooccurs : sparse_c_v.at(word_vocab[wordscores.first])) {
+      for(auto cooccurs : sparse_c_v.at(word_vocab[wordscores.first])) {
         int num = cooccurs.second;
         int j = cooccurs.first;
 
@@ -132,6 +134,18 @@ void word_subword_cooccurrences(
   }
 }
 
+
+// Populates a dense structure of cooccurrences of `word_vocab` vocabulary
+// items in `train_data` within a window of size `window_size`.
+//
+// Converts the dense structure to sparse representation `sparse_c_v` to save
+// memory.
+//
+// Saves unigram frequencies in `word_frequencies`.
+//
+// Optionally, when `compute_pseudoinverse_w` is specified, it computes the
+// pseudo-inverse of the log cooccurrence matrix and stores it in `pinv`.
+// This is done here because the dense structure is needed.
 void sparse_cooccurrences(
     std::vector<std::unordered_map<int, int>>& sparse_c_v,
     std::vector<int>& word_frequencies,
@@ -185,9 +199,10 @@ void sparse_cooccurrences(
     // matmul with embeddings (emb dim [V,E], product dim [V,E])
     pinv = normed * word_vocab.emb;
   }
-
 }
 
+
+// Saves an Eigen matrix `embeddings` into a file specified by `path`.
 void save_embedding_checkpoint(
     const fs::path& path,
     const Eigen::MatrixXf& embeddings) {
@@ -196,6 +211,8 @@ void save_embedding_checkpoint(
   ofs.close();
 }
 
+
+// Saves `segments`, a vector of lines, a file specified by `path`.
 void save_strings(const fs::path& path,
                   const std::vector<std::string>& segments) {
   std::ofstream ofs(path);
