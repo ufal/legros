@@ -305,7 +305,7 @@ int main(int argc, char* argv[]) {
       int w_freq = word_frequencies[i];
       std::vector<std::string> segm;
 
-      viterbi_decode(segm, word_vocab, subword_vocab, subword_embeddings, word);
+      viterbi_decode(segm, word, word_vocab.emb.row(word_vocab[word]), subword_vocab, subword_embeddings);
 
       std::pair<std::string, float> word_pair{word, 1.0};
 
@@ -318,6 +318,11 @@ int main(int argc, char* argv[]) {
         std::string subword = *it;
         oss << sep << subword;
         sep = " ";
+
+        // This is the case of single-byte OOVs - in this case, we can just
+        // ignore them
+        if(!subword_vocab.contains(subword))
+          continue;
 
 #pragma omp critical
         {
