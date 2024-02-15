@@ -18,7 +18,7 @@ def main():
     parser.add_argument(
         "output", type=str,
         help="Path to saved model.")
-    parser.add_argument("--num-threads", type=int, default=64)
+    parser.add_argument("--num-threads", type=int, default=16)
     parser.add_argument("--dimension", type=int, default=200)
     parser.add_argument("--vocab-size", type=int, default=200000)
     parser.add_argument("--epochs", type=int, default=10)
