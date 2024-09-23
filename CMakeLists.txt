@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(NeuralPiece)
+project(legros)
 
 find_package(OpenMP)
 if (OPENMP_FOUND)
