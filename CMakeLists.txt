@@ -31,7 +31,6 @@ include_directories(3rd_party/eigen-3.4.0)
 
 add_executable(legros
   src/bigram_segment.cpp
-  src/counters.cpp
   src/vocabs.cpp)
 
 add_executable(legros-train
