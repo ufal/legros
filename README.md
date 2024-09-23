@@ -1,4 +1,4 @@
-# Subword Segmentation
+# Lexically Grounded Subword Segmentation (LEGROS)
 Word-embedding-based subword segmentation algorithm with bigrams!
 
 ## Building C++ code
