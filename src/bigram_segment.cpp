@@ -11,6 +11,8 @@
 
 #include <cassert>
 #include <string>
+#include <algorithm>
+#include <tuple>
 #include <unordered_map>
 #include "CLI11.hpp"
 #include "vocabs.h"
@@ -122,8 +124,8 @@ int argmax(const std::vector<T>& array) {
 
 float score_bigram(const std::string& subword,
                    const std::string& prev,
-                   unigram_table& unigrams,
-                   bigram_table& bigrams,
+                   const unigram_table& unigrams,
+                   const bigram_table& bigrams,
                    int unigram_count) {
 
   // in case everything is OOV, return log uniform prob
@@ -132,17 +134,21 @@ float score_bigram(const std::string& subword,
 
   // for prev OOVs, return log unigram prob
   if(unigrams.count(prev) == 0)
-    return std::log((float)unigrams[subword] / (float)unigram_count);
+    return std::log((float)unigrams.at(subword) / (float)unigram_count);
 
   // for subword OOVs, use trivial add-one smoothing
-  return std::log((float)(bigrams[prev][subword] + 1) / (float)unigrams[prev]);
+  int bigram_count = 1;
+  if(bigrams.count(prev) != 0 && bigrams.at(prev).count(subword) != 0)
+    bigram_count += bigrams.at(prev).at(subword);
+
+  return std::log((float)(bigram_count) / (float)unigrams.at(prev));
 }
 
 
 void segment_token(std::vector<std::string>& segmentation,
                    const std::string& token,
-                   unigram_table& unigrams,
-                   bigram_table& bigrams,
+                   const unigram_table& unigrams,
+                   const bigram_table& bigrams,
                    int unigram_count,
                    int max_subword_length) {
 
@@ -225,6 +231,159 @@ void segment_token(std::vector<std::string>& segmentation,
 }
 
 
+float estimator(const std::string& subword, const std::string& prev) {
+  return 0.0;
+}
+
+
+void beam_search_segment(std::vector<std::string>& segmentation,
+                         const std::string& token,
+                         const unigram_table& unigrams,
+                         const bigram_table& bigrams,
+                         int unigram_count,
+                         int max_subword_length,
+                         int beam_size) {
+
+  typedef std::tuple<std::string, float, int, int> hypothesis;
+  typedef std::vector<hypothesis> beam;
+
+  std::vector<beam> hypotheses(token.size() + 1);
+  hypotheses[0] = {std::make_tuple(bow, 0.0, -1, -1)};
+
+  for(int start = 0; start < token.size(); ++start) {
+    for(int length = 1; length <= max_subword_length; ++length) {
+
+      int end = start + length;
+      if(end > token.size())
+        break;
+
+      std::string subword = token.substr(start, length);
+
+      if(unigrams.count(subword) == 0 && length > 1)
+        continue;
+
+      for(int i = 0; i < hypotheses[start].size(); ++i) {
+        hypothesis& hyp = hypotheses[start][i];
+
+        float score = std::get<1>(hyp) + score_bigram(
+          subword, std::get<0>(hyp), unigrams, bigrams, unigram_count);
+
+        hypotheses[end].push_back(std::make_tuple(subword, score, start, i));
+      }
+    }
+
+    for(int i = start + 1; i < hypotheses.size(); ++i) {
+      beam& b = hypotheses[i];
+
+      if(b.size() > beam_size) {
+
+        // rearrange so that all elements preceding the element on the beam_size
+        // position have bigger score
+        std::nth_element(
+          b.begin(), b.begin() + beam_size, b.end(),
+          [](const auto& a, const auto& b) { // should return false if a is in the back and b is in the front
+            return std::get<1>(a) > std::get<1>(b);
+          });
+
+          b.resize(beam_size); // truncate
+      }
+    }
+  }
+
+  const beam& last_beam = hypotheses.back();
+  const hypothesis& winner = *std::max_element(
+    last_beam.begin(), last_beam.end(),
+    [](const auto& a, const auto& b) {
+      return std::get<1>(a) < std::get<1>(b);
+    });
+
+  std::vector<std::string> result;
+
+  result.push_back(std::get<0>(winner));
+  int start = std::get<2>(winner);
+  int prev = std::get<3>(winner);
+
+  while(start > 0) {  // this also gets rid of the bow token
+    const hypothesis& prev_hyp = hypotheses[start][prev];
+    result.push_back(std::get<0>(prev_hyp));
+    start = std::get<2>(prev_hyp);
+    prev = std::get<3>(prev_hyp);
+  }
+
+  segmentation.assign(result.rbegin(), result.rend());
+}
+
+/* This implementation uses copying of stuff, as in the python */
+/*
+void beam_search_segment2(std::vector<std::string>& segmentation,
+                         const std::string& token,
+                         const unigram_table& unigrams,
+                         const bigram_table& bigrams,
+                         int unigram_count,
+                         int max_subword_length,
+                         int beam_size) {
+
+  // dimensions: prefix_length -> beam -> (position -> subword, score)
+  std::vector<std::vector<
+      std::pair<std::vector<std::string>, float>>> hypotheses(token.size() + 1);
+
+  hypotheses[0] = {{{bow}, 0.0}};
+
+  for(int start = 0; start < token.size(); ++start) {
+
+    for(int length = 1; length <= max_subword_length; ++length) {
+
+      int end = start + length;
+      if(end > token.size())
+        break;
+
+      auto subword = token.substr(start, length);
+
+      if(unigrams.count(subword) == 0 && length > 1)
+        continue;
+
+      // expand from current segmentations
+      for(auto& hyp: hypotheses[start]) {
+        float score = hyp.second + score_bigram(
+          subword, hyp.first.back(), unigrams, bigrams, unigram_count);
+
+        std::vector<std::string> copy = hyp.first;
+        copy.push_back(subword);
+
+        hypotheses[end].push_back({copy, score});
+      }
+    }
+
+    // keep only the best beam_size hypotheses
+    for(int i = start + 1; i < hypotheses.size(); ++i) {
+      auto& beam = hypotheses[i];
+
+      if(beam.size() > beam_size) {
+
+        // rearrange so that all elements preceding the element on the beam_size
+        // position have bigger score
+        std::nth_element(
+          beam.begin(), beam.begin() + beam_size, beam.end(),
+          [](const auto& a, const auto& b) { // should return false if a is in the back and b is in the front
+            return a.second > b.second;
+          });
+
+          beam.resize(beam_size); // truncate
+      }
+    }
+  }
+
+  auto& last_beam = hypotheses.back();
+  auto& result = (*std::max_element(
+    last_beam.begin(), last_beam.end(),
+    [](const auto& a, const auto& b) {
+      return a.second < b.second; // should return if a is less than b
+    })).first;
+
+  segmentation.assign(result.begin() + 1, result.end());
+}
+*/
+
 int main(int argc, char* argv[]) {
   CLI::App app{"Bigram segment -- using subword bigram statistics for subword segmentation."};
   get_options(app);
@@ -260,8 +419,12 @@ int main(int argc, char* argv[]) {
       std::cout << wordsep;
       wordsep = " ";
 
-      segment_token(segm, word, unigram_frequencies, bigram_frequencies,
-                    unigram_count, max_unigram_length);
+      //segment_token(segm, word, unigram_frequencies, bigram_frequencies,
+      //             unigram_count, max_unigram_length);
+
+      beam_search_segment(segm, word, unigram_frequencies, bigram_frequencies,
+                    unigram_count, max_unigram_length, 5);
+
 
       for(auto it = segm.begin(); it != segm.end() - 1; ++it) {
         std::cout << *it << sub_sep;
