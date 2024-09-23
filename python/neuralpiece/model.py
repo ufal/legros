@@ -100,6 +100,72 @@ class Model:
         self._cache[token] = tokenization
         return tokenization
 
+    def greedy_segment(self, token: str) -> List[str]:
+        current_position = 0
+        tokenization = ["###"]
+        while current_position < len(token):
+            best_candidate = None
+            best_score = -np.inf
+            for subword_length in range(1, self.vocab.max_subword_length + 1):
+                end_position = current_position + subword_length
+                if end_position > len(token):
+                    break
+
+                subword = token[current_position:end_position]
+                if self.is_bert_wordpiece and current_position > 0:
+                    subword = "##" + subword
+
+                if subword in self.vocab:
+                    score = self.estimator(subword, tokenization[-1]) / subword_length
+                    if score > best_score:
+                        best_score = score
+                        best_candidate = subword
+            if best_candidate is None:
+                tokenization.append(token[current_position])
+                current_position += 1
+            else:
+                tokenization.append(best_candidate)
+                current_position += len(best_candidate)
+        return tokenization[1:]
+
+
+    def beam_search_segment(self, token: str, beam_size: int = 5) -> List[str]:
+        assert beam_size > 0
+
+        segmentations = [[(["###"], 0.0)]] + [[] for _ in token]
+        for start in range(len(token)):
+            for length in range(1, self.vocab.max_subword_length + 1):
+                end = start + length
+                if end > len(token):
+                    break
+
+                subword = token[start:end]
+                if self.is_bert_wordpiece and start > 0:
+                    subword = "##" + subword
+
+                if subword not in self.vocab and len(subword) > 1:
+                    continue
+
+                # Expand from the current segmentations
+                for prev_segmentation, prev_score in segmentations[start]:
+                    score = self.estimator(subword, prev_segmentation[-1])
+                    new_segmentation = prev_segmentation + [subword]
+                    new_score = prev_score + score
+                    segmentations[end].append((new_segmentation, new_score))
+
+            # Keep only the best beam_size segmentations
+            for i, seg_list in enumerate(segmentations[start + 1:]):
+                if len(seg_list) > beam_size:
+                    # TODO can be done more efficiently with argpartition
+                    #seg_list.sort(key=lambda x: x[1] / len(x[0]), reverse=True)
+                    seg_list.sort(key=lambda x: x[1], reverse=True)
+                    segmentations[start + 1 + i] = seg_list[:beam_size]
+
+        #best_segmentation = max(segmentations[-1], key=lambda x: x[1] / len(x[0]))
+        best_segmentation = max(segmentations[-1], key=lambda x: x[1])
+        return best_segmentation[0][1:]
+
+
     def extract_bigrams(self, tokens):
         bigrams = []
         for token in tokens:
