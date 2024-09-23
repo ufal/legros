@@ -29,54 +29,15 @@ include_directories(src)
 include_directories(include)
 include_directories(3rd_party/eigen-3.4.0)
 
-add_executable(brown_classes
-  src/brown_classes_main.cpp
-  src/brown_classes.cpp
-  src/counters.cpp)
-
-add_executable(bigram_segment
+add_executable(legros
   src/bigram_segment.cpp
   src/counters.cpp
   src/vocabs.cpp)
 
-add_executable(train_subword_embeddings
+add_executable(legros-train
   src/train_subword_embeddings.cpp
   src/vocabs.cpp
   src/substring_stats.cpp
   src/cosine_viterbi.cpp)
-
-add_executable(merge_contexts src/merge_contexts.cpp)
-
-add_executable(subword_embeddings
-  src/subword_embeddings.cpp
-  src/substring_stats.cpp
-  src/vocabs.cpp)
-
-add_executable(test-eigen src/test-eigen.cpp)
-
-add_executable(word_cooccurrence_matrix
-  src/word_cooccurrence_matrix.cpp
-  src/vocabs.cpp)
-
-add_executable(forward_backward
-  src/forward_backward.cpp
-  src/vocabs.cpp
-  src/unigram_model.cpp)
-
-add_executable(test_unigram_model
-  src/test_unigram_model.cpp
-  src/vocabs.cpp
-  src/unigram_model.cpp)
-
-
-# target_link_libraries (subword_embeddings Eigen3::Eigen)
-# target_link_libraries (brown_classes Eigen3::Eigen)
-# target_link_libraries (bigram_segment Eigen3::Eigen)
-# target_link_libraries (train_subword_embeddings Eigen3::Eigen)
-# target_link_libraries (word_cooccurrence_matrix Eigen3::Eigen)
-# target_link_libraries (forward_backward Eigen3::Eigen)
-# target_link_libraries (test_unigram_model Eigen3::Eigen)
-# target_link_libraries (test-eigen Eigen3::Eigen ${MKL_CORE_LIBRARY} ${MKL_INTEL_THREAD_LIBRARY} ${MKL_INTEL_LP64_LIBRARY})
-
 
 add_subdirectory(src)
