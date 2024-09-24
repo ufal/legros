@@ -27,19 +27,24 @@ const std::string sub_sep = "@@ ";
 struct opt {
   std::string bigram_stats;
   std::string unigram_stats;
+  int beam_size;
 
 } opt;
 
 void get_options(CLI::App& app) {
   app.add_option(
-      "bigram_stats", opt.bigram_stats, "Bigram statistics.")
+      "bigrams", opt.bigram_stats, "Bigram statistics.")
       ->required()
       ->check(CLI::ExistingFile);
 
   app.add_option(
-      "unigram_stats", opt.unigram_stats, "Unigram statistics.")
+      "unigrams", opt.unigram_stats, "Unigram statistics.")
       ->required()
       ->check(CLI::ExistingFile);
+
+  // beam size
+  app.add_option("-b,--beam", opt.beam_size, "Beam size.")
+      ->check(CLI::NonNegativeNumber);
 }
 
 
@@ -129,16 +134,16 @@ float score_bigram(const std::string& subword,
                    int unigram_count) {
 
   // in case everything is OOV, return log uniform prob
-  if(unigrams.count(prev) == 0 && unigrams.count(subword) == 0)
+  if((unigrams.count(prev) == 0 || unigrams.at(prev) == 0) && (unigrams.count(subword) == 0 || unigrams.at(subword) == 0))
     return -std::log(unigram_count); // technically this should be vocab size
 
   // for prev OOVs, return log unigram prob
-  if(unigrams.count(prev) == 0)
+  if(unigrams.count(prev) == 0 || unigrams.at(prev) == 0)
     return std::log((float)unigrams.at(subword) / (float)unigram_count);
 
   // for subword OOVs, use trivial add-one smoothing
   int bigram_count = 1;
-  if(bigrams.count(prev) != 0 && bigrams.at(prev).count(subword) != 0)
+  if(bigrams.count(prev) != 0 && (bigrams.at(prev).count(subword) != 0 && bigrams.at(prev).at(subword) != 0))
     bigram_count += bigrams.at(prev).at(subword);
 
   return std::log((float)(bigram_count) / (float)unigrams.at(prev));
@@ -419,12 +424,13 @@ int main(int argc, char* argv[]) {
       std::cout << wordsep;
       wordsep = " ";
 
-      //segment_token(segm, word, unigram_frequencies, bigram_frequencies,
-      //             unigram_count, max_unigram_length);
-
-      beam_search_segment(segm, word, unigram_frequencies, bigram_frequencies,
-                    unigram_count, max_unigram_length, 5);
-
+      // if beam size is not entered, use segment_token, else use beam_search_segment
+      if(opt.beam_size == 0)
+        segment_token(segm, word, unigram_frequencies, bigram_frequencies,
+                   unigram_count, max_unigram_length);
+      else
+        beam_search_segment(segm, word, unigram_frequencies, bigram_frequencies,
+                   unigram_count, max_unigram_length, opt.beam_size);
 
       for(auto it = segm.begin(); it != segm.end() - 1; ++it) {
         std::cout << *it << sub_sep;
