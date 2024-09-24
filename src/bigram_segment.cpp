@@ -28,6 +28,7 @@ struct opt {
   std::string bigram_stats;
   std::string unigram_stats;
   int beam_size;
+  int buffer_size = 1000;
 
 } opt;
 
@@ -44,6 +45,9 @@ void get_options(CLI::App& app) {
 
   // beam size
   app.add_option("-b,--beam", opt.beam_size, "Beam size.")
+      ->check(CLI::NonNegativeNumber);
+
+  app.add_option("--buffer-size", opt.buffer_size, "Buffer size.")
       ->check(CLI::NonNegativeNumber);
 }
 
@@ -318,76 +322,59 @@ void beam_search_segment(std::vector<std::string>& segmentation,
   segmentation.assign(result.rbegin(), result.rend());
 }
 
-/* This implementation uses copying of stuff, as in the python */
-/*
-void beam_search_segment2(std::vector<std::string>& segmentation,
-                         const std::string& token,
+
+void process_line_buffer(const std::vector<std::vector<std::string>>& lines,
+                         std::vector<std::vector<std::vector<std::string>>>& segmentations,
                          const unigram_table& unigrams,
                          const bigram_table& bigrams,
                          int unigram_count,
                          int max_subword_length,
                          int beam_size) {
 
-  // dimensions: prefix_length -> beam -> (position -> subword, score)
-  std::vector<std::vector<
-      std::pair<std::vector<std::string>, float>>> hypotheses(token.size() + 1);
+  segmentations.resize(lines.size());
 
-  hypotheses[0] = {{{bow}, 0.0}};
+#pragma omp parallel for
+  for(int i = 0; i < lines.size(); ++i) {
 
-  for(int start = 0; start < token.size(); ++start) {
+    const std::vector<std::string>& line = lines[i];
 
-    for(int length = 1; length <= max_subword_length; ++length) {
 
-      int end = start + length;
-      if(end > token.size())
-        break;
+    for(int j = 0; j < line.size(); ++j) {
+      std::vector<std::string> segm;
+      const std::string& token = line[j];
 
-      auto subword = token.substr(start, length);
-
-      if(unigrams.count(subword) == 0 && length > 1)
-        continue;
-
-      // expand from current segmentations
-      for(auto& hyp: hypotheses[start]) {
-        float score = hyp.second + score_bigram(
-          subword, hyp.first.back(), unigrams, bigrams, unigram_count);
-
-        std::vector<std::string> copy = hyp.first;
-        copy.push_back(subword);
-
-        hypotheses[end].push_back({copy, score});
+      if(opt.beam_size == 0) {
+        segment_token(
+            segm, token, unigrams, bigrams, unigram_count, max_subword_length);
+      } else {
+        beam_search_segment(
+            segm, token, unigrams, bigrams, unigram_count, max_subword_length, opt.beam_size);
       }
-    }
 
-    // keep only the best beam_size hypotheses
-    for(int i = start + 1; i < hypotheses.size(); ++i) {
-      auto& beam = hypotheses[i];
-
-      if(beam.size() > beam_size) {
-
-        // rearrange so that all elements preceding the element on the beam_size
-        // position have bigger score
-        std::nth_element(
-          beam.begin(), beam.begin() + beam_size, beam.end(),
-          [](const auto& a, const auto& b) { // should return false if a is in the back and b is in the front
-            return a.second > b.second;
-          });
-
-          beam.resize(beam_size); // truncate
-      }
+      segmentations[i].push_back(segm);
     }
   }
 
-  auto& last_beam = hypotheses.back();
-  auto& result = (*std::max_element(
-    last_beam.begin(), last_beam.end(),
-    [](const auto& a, const auto& b) {
-      return a.second < b.second; // should return if a is less than b
-    })).first;
+  // output segmented data
+  for(const auto& line : segmentations) {
 
-  segmentation.assign(result.begin() + 1, result.end());
+    std::string wordsep = "";
+
+    for(const auto& segmented_token : line) {
+      std::cout << wordsep;
+      wordsep = " ";
+
+      for(auto it = segmented_token.begin(); it != segmented_token.end() - 1; ++it) {
+        std::cout << *it << sub_sep;
+      }
+
+      std::cout << *(segmented_token.end() - 1);
+    }
+
+    std::cout << std::endl;
+  }
 }
-*/
+
 
 int main(int argc, char* argv[]) {
   CLI::App app{"Bigram segment -- using subword bigram statistics for subword segmentation."};
@@ -414,32 +401,38 @@ int main(int argc, char* argv[]) {
 
   std::cerr << "max unigram length: " << max_unigram_length << std::endl;
 
+  std::cerr << "buffer size: " << opt.buffer_size << std::endl;
+
+  std::vector<std::vector<std::string>> buffer(opt.buffer_size);
+  std::vector<std::vector<std::vector<std::string>>> // lines, tokens, segmentations
+      segmentations(opt.buffer_size);
+
+  int line_count = 0;
   for(std::string line; std::getline(std::cin, line);) {
     std::istringstream ss(line);
 
-    std::string wordsep = "";
-    for(std::string word; std::getline(ss, word, ' ');) {
-      std::vector<std::string> segm;
-
-      std::cout << wordsep;
-      wordsep = " ";
-
-      // if beam size is not entered, use segment_token, else use beam_search_segment
-      if(opt.beam_size == 0)
-        segment_token(segm, word, unigram_frequencies, bigram_frequencies,
-                   unigram_count, max_unigram_length);
-      else
-        beam_search_segment(segm, word, unigram_frequencies, bigram_frequencies,
-                   unigram_count, max_unigram_length, opt.beam_size);
-
-      for(auto it = segm.begin(); it != segm.end() - 1; ++it) {
-        std::cout << *it << sub_sep;
-      }
-
-      std::cout << *(segm.end() - 1);
+    for (std::string word; std::getline(ss, word, ' ');) {
+      buffer[line_count].push_back(word);
     }
 
-    std::cout << std::endl;
+    if(++line_count == opt.buffer_size) {
+      process_line_buffer(buffer, segmentations, unigram_frequencies,
+                          bigram_frequencies, unigram_count, max_unigram_length,
+                          opt.beam_size);
+      line_count = 0;
+
+      buffer.clear();
+      buffer.resize(opt.buffer_size);
+      segmentations.clear();
+      segmentations.resize(opt.buffer_size);
+    }
+  }
+
+  if(line_count > 0) {
+    buffer.resize(line_count);
+    process_line_buffer(buffer, segmentations, unigram_frequencies,
+                        bigram_frequencies, unigram_count, max_unigram_length,
+                        opt.beam_size);
   }
 
   return 0;
