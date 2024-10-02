@@ -6,8 +6,8 @@ import pickle
 from typing import Dict, List, Tuple
 import sys
 
-from neuralpiece.model import Model
-from neuralpiece.vocab import Vocab
+from legros.model import Model
+from legros.vocab import Vocab
 
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 

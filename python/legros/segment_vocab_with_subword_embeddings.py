@@ -12,7 +12,7 @@ import numpy as np
 from scipy.spatial import distance
 from scipy.special import logsumexp
 
-from neuralpiece.unigram_segment import viterbi_segment, expected_counts
+from legros.unigram_segment import viterbi_segment, expected_counts
 
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 

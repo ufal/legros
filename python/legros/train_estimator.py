@@ -9,8 +9,8 @@ import sys
 import torch
 import torch.nn as nn
 
-from neuralpiece.estimators import DotProdEstimator
-from neuralpiece.vocab import Vocab
+from legros.estimators import DotProdEstimator
+from legros.vocab import Vocab
 
 
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)

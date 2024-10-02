@@ -7,10 +7,10 @@ import sys
 import torch
 import torch.nn as nn
 
-from neuralpiece.estimators import UniformEstimator#, DotProdEstimator
-from neuralpiece.model import Model
-from neuralpiece.pretokenize import pretokenize
-from neuralpiece.vocab import Vocab
+from legros.estimators import UniformEstimator#, DotProdEstimator
+from legros.model import Model
+from legros.pretokenize import pretokenize
+from legros.vocab import Vocab
 
 
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)

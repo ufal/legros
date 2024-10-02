@@ -1,6 +1,6 @@
 import unittest
 
-from neuralpiece.pretokenize import pretokenize
+from legros.pretokenize import pretokenize
 
 
 class TestPretokenize(unittest.TestCase):

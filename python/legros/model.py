@@ -3,7 +3,7 @@ import sys
 import numpy as np
 from scipy.special import logsumexp
 
-from neuralpiece.vocab import Vocab
+from legros.vocab import Vocab
 
 
 class Model:

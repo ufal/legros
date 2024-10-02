@@ -3,11 +3,8 @@ from typing import List, Dict
 
 import numpy as np
 import scipy.special
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
-from neuralpiece.vocab import Vocab
+from legros.vocab import Vocab
 
 
 class UniformEstimator:
@@ -131,4 +128,3 @@ class DotProdEstimator(nn.Module):
                                      keepdim=True, dim=0)
 
         return logsum.squeeze(0).cpu().numpy().tolist()
-

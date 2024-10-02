@@ -6,7 +6,7 @@ import argparse
 import multiprocessing
 import sys
 
-from neuralpiece.pretokenize import pretokenize
+from legros.pretokenize import pretokenize
 
 
 def get_vocab(lines):

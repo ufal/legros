@@ -1,8 +1,8 @@
 import unittest
 
-from neuralpiece.vocab import Vocab
-from neuralpiece.model import Model
-from neuralpiece.estimators import UniformEstimator, TableEstimator
+from legros.vocab import Vocab
+from legros.model import Model
+from legros.estimators import UniformEstimator, TableEstimator
 
 
 class TestModel(unittest.TestCase):
