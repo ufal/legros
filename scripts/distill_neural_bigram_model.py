@@ -14,10 +14,10 @@ from gensim.models import Word2Vec
 import numpy as np
 from scipy.spatial import distance
 
-from neuralpiece.estimators import NumpyDotProdEstimator
-from neuralpiece.vocab import Vocab
-from neuralpiece.unigram_segment import viterbi_segment
-from neuralpiece.segment_vocab_with_subword_embeddings import get_substrings
+from legros.estimators import NumpyDotProdEstimator
+from legros.vocab import Vocab
+from legros.unigram_segment import viterbi_segment
+from legros.segment_vocab_with_subword_embeddings import get_substrings
 
 import torch
 

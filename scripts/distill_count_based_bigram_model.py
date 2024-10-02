@@ -14,8 +14,8 @@ from gensim.models import Word2Vec, KeyedVectors
 import numpy as np
 from scipy.spatial import distance
 
-from neuralpiece.unigram_segment import viterbi_segment
-from neuralpiece.segment_vocab_with_subword_embeddings import get_substrings
+from legros.unigram_segment import viterbi_segment
+from legros.segment_vocab_with_subword_embeddings import get_substrings
 
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 
