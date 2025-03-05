@@ -39,4 +39,15 @@ add_executable(legros-train
   src/substring_stats.cpp
   src/cosine_viterbi.cpp)
 
+add_executable(legros-init-emb
+  src/initialize_subword_embeddings.cpp
+  src/vocabs.cpp
+  src/substring_stats.cpp)
+
+add_executable(learn-vocab
+  src/learn_vocab.cpp
+  src/cosine_viterbi.cpp
+  src/vocabs.cpp
+  src/substring_stats.cpp)
+
 add_subdirectory(src)

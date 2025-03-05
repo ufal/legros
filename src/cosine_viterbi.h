@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <map>
+
 #include <Eigen/Dense>
 #include "vocabs.h"
 
@@ -16,15 +17,46 @@ void subword_cosine_similarities(
     const Vocab& subwords,
     const Eigen::MatrixXf& subword_embeddings);
 
+void subword_cosine_similarities(
+    std::map<int, float>& similarities,
+    const std::string& word,
+    const Eigen::VectorXf& word_embedding,
+    const std::unordered_map<std::string, int>& subwords,
+    const Eigen::MatrixXf& subword_embeddings);
+
+void subword_cosine_similarities(
+    std::map<int, float>& similarities,
+    const std::string& word,
+    const Eigen::VectorXf& word_embedding,
+    const std::unordered_map<std::string, int>& subwords,
+    const Eigen::MatrixXf& subword_embeddings,
+    const std::string& candidate_subword,
+    int candidate_subword_index);
 
 // Segments a single word using the viterbi algorithm to find path with highest
 // score, according to cosine similarities of the word embedding with the
 // subword embeddings. Fills `segmentation` with the resulting segments.
-void viterbi_decode(
+float viterbi_decode(
     std::vector<std::string>& segmentation,
     const std::string& word,
     const Eigen::VectorXf& word_embedding,
     const Vocab& subwords,
     const Eigen::MatrixXf& subword_embeddings);
+
+float viterbi_decode(
+    std::vector<std::string>& segmentation,
+    const std::string& word,
+    const Eigen::VectorXf& word_embedding,
+    const std::unordered_map<std::string, int>& subwords,
+    const Eigen::MatrixXf& subword_embeddings);
+
+float viterbi_decode(
+    std::vector<std::string>& segmentation,
+    const std::string& word,
+    const Eigen::VectorXf& word_embedding,
+    const std::unordered_map<std::string, int>& subwords,
+    const Eigen::MatrixXf& subword_embeddings,
+    const std::string& candidate_subword,
+    int candidate_subword_index);
 
 #endif  // SSEG_COSINE_VITERBI_H_
